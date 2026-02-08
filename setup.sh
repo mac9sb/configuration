@@ -62,7 +62,6 @@ CLASSIFY_TIMEOUT=15
 . "$SCRIPTS_DIR/db.sh"
 
 UID_NUM="$(id -u)"
-TOTAL_STEPS=16
 
 # Initialise the state database early so db_* helpers are available
 mkdir -p "$STATE_DIR" "$LOG_DIR"
@@ -131,7 +130,7 @@ run_with_timeout() {
 #  Step 1 — Touch ID for sudo
 # =============================================================================
 
-info "Step 1/${TOTAL_STEPS}: Touch ID for sudo"
+info "Touch ID for sudo"
 if [ ! -f /etc/pam.d/sudo_local ] || ! grep -q "pam_tid.so" /etc/pam.d/sudo_local 2>/dev/null; then
     sudo cp /etc/pam.d/sudo_local.template /etc/pam.d/sudo_local
     sudo sed -i '' 's/^#auth/auth/' /etc/pam.d/sudo_local
@@ -144,7 +143,7 @@ fi
 #  Step 2 — Symlink Dotfiles
 # =============================================================================
 
-info "Step 2/${TOTAL_STEPS}: Symlinking dotfiles"
+info "Symlinking dotfiles"
 
 for _src in "$DOTFILES_DIR"/*; do
     [ ! -f "$_src" ] && continue
@@ -188,7 +187,7 @@ fi
 #  Step 3 — SSH key
 # =============================================================================
 
-info "Step 3/${TOTAL_STEPS}: SSH key"
+info "SSH key"
 if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
     mkdir -p "$HOME/.ssh"
     chmod 700 "$HOME/.ssh"
@@ -207,7 +206,7 @@ fi
 #  Step 4 — Xcode CLI Tools & Swift
 # =============================================================================
 
-info "Step 4/${TOTAL_STEPS}: Xcode Command Line Tools & Swift"
+info "Xcode Command Line Tools & Swift"
 if ! xcode-select -p >/dev/null 2>&1; then
     info "Installing Xcode Command Line Tools (this may take a while)..."
     xcode-select --install 2>/dev/null || true
@@ -229,7 +228,7 @@ fi
 #  Step 5 — Install cloudflared
 # =============================================================================
 
-info "Step 5/${TOTAL_STEPS}: Installing cloudflared"
+info "Installing cloudflared"
 if ! command_exists cloudflared; then
     CF_LATEST=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/cloudflare/cloudflared/releases/latest | sed 's|.*/||')
     CF_PKG_URL="https://github.com/cloudflare/cloudflared/releases/download/${CF_LATEST}/cloudflared-arm64.pkg"
@@ -257,7 +256,7 @@ fi
 #  Step 6 — Install GitHub CLI (gh)
 # =============================================================================
 
-info "Step 6/${TOTAL_STEPS}: Installing GitHub CLI (gh)"
+info "Installing GitHub CLI (gh)"
 if ! command_exists gh; then
     GH_LATEST=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/cli/cli/releases/latest | sed 's|.*/||')
     GH_VERSION="${GH_LATEST#v}"
@@ -291,10 +290,10 @@ fi
 #  Step 7 — Install GitHub Copilot CLI
 # =============================================================================
 
-info "Step 7/${TOTAL_STEPS}: Installing GitHub Copilot CLI"
+info "Installing GitHub Copilot CLI"
 if ! command_exists github-copilot-cli; then
-    COPILOT_LATEST=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/github/gh-copilot/releases/latest | sed 's|.*/||')
-    COPILOT_BIN_URL="https://github.com/github/gh-copilot/releases/download/${COPILOT_LATEST}/darwin-arm64"
+    COPILOT_LATEST=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/github/copilot-cli/releases/latest | sed 's|.*/||')
+    COPILOT_BIN_URL="https://github.com/github/copilot-cli/releases/download/${COPILOT_LATEST}/darwin-arm64"
     info "Downloading GitHub Copilot CLI ${COPILOT_LATEST}..."
     TMPDIR_COPILOT="$(mktemp -d)"
     if curl -sL --fail --max-time 60 "$COPILOT_BIN_URL" -o "$TMPDIR_COPILOT/github-copilot-cli"; then
@@ -320,7 +319,7 @@ fi
 #  Step 8 — Initialize git submodules & install hooks
 # =============================================================================
 
-info "Step 8/${TOTAL_STEPS}: Initializing git submodules & installing hooks"
+info "Initializing git submodules & installing hooks"
 mkdir -p "$SITES_DIR" "$TOOLING_DIR" "$STATE_DIR" "$LOG_DIR" "$LAUNCH_AGENTS_DIR"
 
 cd "$DEV_DIR"
@@ -356,7 +355,7 @@ fi
 #  Step 7 — Build Swift projects (with rollback preservation)
 # =============================================================================
 
-info "Step 9/${TOTAL_STEPS}: Building Swift projects"
+info "Building Swift projects"
 
 # Build any Swift package found under tooling/
 for _dir in "$TOOLING_DIR"/*/; do
@@ -446,7 +445,7 @@ done
 #  Step 8 — Configure Apache (with atomic reload)
 # =============================================================================
 
-info "Step 10/${TOTAL_STEPS}: Configuring Apache"
+info "Configuring Apache"
 
 enable_module() {
     _mod="$1"
@@ -642,7 +641,6 @@ if [ "$_has_vhosts" = true ] || [ "$_has_defaults" = true ]; then
 # --- Default VirtualHost (localhost path-based access for all sites) ---
 <VirtualHost *:80>
     ServerName localhost
-    ServerAlias *
 
     ProxyPreserveHost On
     ProxyRequests Off
@@ -699,7 +697,7 @@ rm -f "$_old_conf" 2>/dev/null
 #  Step 9 — Initialise SQLite state database & assign server ports
 # =============================================================================
 
-info "Step 11/${TOTAL_STEPS}: Initialising state database & assigning ports"
+info "Initialising state database & assigning ports"
 
 db_init
 
@@ -750,7 +748,7 @@ chmod +x "$SCRIPTS_DIR/backup.sh"         2>/dev/null || true
 #  Step 10 — Configure Cloudflare tunnel (in-repo config, credentials off-repo)
 # =============================================================================
 
-info "Step 12/${TOTAL_STEPS}: Configuring Cloudflare tunnel"
+info "Configuring Cloudflare tunnel"
 
 mkdir -p "$HOME/.cloudflared"
 
@@ -776,6 +774,42 @@ chown -R "${SUDO_USER:-$(logname)}:staff" "$HOME/.cloudflared"
 # Check if credentials are already in place
 if [ -f "$HOME/.cloudflared/maclong.json" ]; then
     success "  Tunnel credentials found"
+    
+    # Configure DNS routes for the tunnel
+    if command_exists cloudflared; then
+        # Extract primary domain from config
+        _primary_domain="$(grep "^# primary-domain:" "$_tunnel_config" 2>/dev/null | awk '{print $3}')"
+        if [ -n "$_primary_domain" ]; then
+            # Add root domain route
+            if cloudflared tunnel route dns -f maclong "${_primary_domain}" 2>/dev/null; then
+                success "  Added DNS route: ${_primary_domain}"
+            else
+                true
+            fi
+            # Add wildcard route (covers all subdomains)
+            if cloudflared tunnel route dns -f maclong "*.${_primary_domain}" 2>/dev/null; then
+                success "  Added DNS route: *.${_primary_domain}"
+            else
+                true
+            fi
+            
+            # Add route for each custom domain site (non-subdomain sites)
+            for _dir in "$SITES_DIR"/*/; do
+                [ ! -d "$_dir" ] && continue
+                _name="$(basename "$_dir")"
+                _domain="$(resolve_domain "$_name")" || continue
+                
+                # Skip if it's a subdomain (covered by wildcard)
+                if ! echo "$_domain" | grep -q "\.${_primary_domain}\$"; then
+                    if cloudflared tunnel route dns -f maclong "$_domain" 2>/dev/null; then
+                        success "  Added DNS route: $_domain"
+                    else
+                        true
+                    fi
+                fi
+            done
+        fi
+    fi
 else
     warn "  No tunnel credentials at ~/.cloudflared/maclong.json"
     warn "  New tunnel:"
@@ -790,7 +824,7 @@ fi
 #  Step 11 — Install log rotation (newsyslog)
 # =============================================================================
 
-info "Step 13/${TOTAL_STEPS}: Installing log rotation config"
+info "Installing log rotation config"
 
 _newsyslog_src="$NEWSYSLOG_DIR/com.mac9sb.conf"
 _newsyslog_dest="/etc/newsyslog.d/com.mac9sb.conf"
@@ -808,7 +842,7 @@ fi
 #  Step 12 — Symlink launchd agents
 # =============================================================================
 
-info "Step 14/${TOTAL_STEPS}: Symlinking launchd agents"
+info "Symlinking launchd agents"
 
 # All plists are static files with literal paths — symlinked for easy management.
 # server-manager.plist  -> supervises all server binaries (inferred from filesystem)
@@ -844,15 +878,47 @@ done
 #  Step 13 — Test & restart Apache
 # =============================================================================
 
-info "Step 15/${TOTAL_STEPS}: Testing and restarting Apache"
+info "Fixing directory permissions for Apache"
 
+# Apache (_www user) needs execute permission on parent directories to access site files
+_user_home="$(dirname "$DEV_DIR")"
+if [ ! -x "$_user_home" ] || [ ! -x "$DEV_DIR" ]; then
+    chmod +x "$_user_home" 2>/dev/null || true
+    chmod +x "$DEV_DIR" 2>/dev/null || true
+    success "  Fixed execute permissions on $_user_home and $DEV_DIR"
+fi
+
+# Fix ownership of .build directories (might be owned by root from sudo builds)
+for _dir in "$SITES_DIR"/*/ "$TOOLING_DIR"/*/; do
+    [ ! -d "$_dir" ] && continue
+    if [ -d "$_dir/.build" ]; then
+        _owner="$(stat -f '%Su' "$_dir/.build" 2>/dev/null || echo 'unknown')"
+        if [ "$_owner" = "root" ]; then
+            sudo chown -R "${SUDO_USER:-$(logname)}:staff" "$_dir/.build" 2>/dev/null || true
+            success "  Fixed ownership of $_dir/.build (was root)"
+        fi
+    fi
+done
+
+# Ensure .output directories are readable by Apache
 for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
     if [ -d "$_dir/.output" ]; then
+        _owner="$(stat -f '%Su' "$_dir/.output" 2>/dev/null || echo 'unknown')"
+        if [ "$_owner" = "root" ]; then
+            sudo chown -R "${SUDO_USER:-$(logname)}:staff" "$_dir/.output" 2>/dev/null || true
+        fi
         chmod -R o+rX "$_dir/.output" 2>/dev/null || true
-        chmod o+x "$DEV_DIR" "$SITES_DIR" "$_dir" "$_dir/.output" 2>/dev/null || true
+        chmod o+x "$SITES_DIR" "$_dir" "$_dir/.output" 2>/dev/null || true
     fi
 done
+success "  Directory permissions configured for Apache access"
+
+# =============================================================================
+#  Step 16 — Test & restart Apache
+# =============================================================================
+
+info "Testing and restarting Apache"
 
 if sudo apachectl configtest >/dev/null 2>&1; then
     success "Apache configuration test passed"
@@ -867,7 +933,7 @@ fi
 #  Step 14 — R2 backup credentials check
 # =============================================================================
 
-info "Step 16/${TOTAL_STEPS}: Checking backup prerequisites"
+info "Checking backup prerequisites"
 
 _r2_creds="$DEV_DIR/.env.local"
 if [ -f "$_r2_creds" ]; then

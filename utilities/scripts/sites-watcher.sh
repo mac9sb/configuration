@@ -364,7 +364,6 @@ if [ "$_has_vhosts" = true ] || [ "$_has_defaults" = true ]; then
 # --- Default VirtualHost (localhost path-based access for all sites) ---
 <VirtualHost *:80>
     ServerName localhost
-    ServerAlias *
 
     ProxyPreserveHost On
     ProxyRequests Off
