@@ -413,6 +413,13 @@ for _mod in mod_proxy.so mod_proxy_http.so mod_rewrite.so mod_proxy_wstunnel.so 
     enable_module "$_mod"
 done
 
+if grep -q "^#ServerName" "$HTTPD_CONF"; then
+    sudo sed -i '' 's|^#ServerName.*|ServerName localhost|' "$HTTPD_CONF"
+    success "  Set ServerName localhost"
+else
+    success "  ServerName already configured"
+fi
+
 if ! grep -q "extra/custom.conf" "$HTTPD_CONF"; then
     printf "\n# Developer custom site configuration\nInclude /private/etc/apache2/extra/custom.conf\n" \
         | sudo tee -a "$HTTPD_CONF" >/dev/null
@@ -793,7 +800,7 @@ for _dir in "$SITES_DIR"/*/; do
     fi
 done
 
-if sudo apachectl configtest 2>&1; then
+if sudo apachectl configtest >/dev/null 2>&1; then
     success "Apache configuration test passed"
     sudo apachectl restart
     success "Apache restarted"

@@ -17,7 +17,9 @@
     ProxyTimeout 300
     SetEnv proxy-initial-not-pooled 1
 
-    Require all granted
+    <Proxy *>
+        Require all granted
+    </Proxy>
 
     # --- WebSocket upgrade ---
     RewriteEngine On

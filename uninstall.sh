@@ -176,12 +176,27 @@ if [ -f "$CUSTOM_CONF" ]; then
     success "Removed $CUSTOM_CONF"
 fi
 
-# Remove the Include line from httpd.conf
-if grep -q "extra/custom.conf" "$HTTPD_CONF" 2>/dev/null; then
+# Remove the Include line and revert httpd.conf modifications
+if grep -q "extra/custom.conf" "$HTTPD_CONF" 2>/dev/null || \
+   grep -q "^ServerName localhost" "$HTTPD_CONF" 2>/dev/null; then
     sudo cp "$HTTPD_CONF" "${HTTPD_CONF}.bak.$(date +%Y%m%d%H%M%S)"
     sudo sed -i '' '/# Developer custom site configuration/d' "$HTTPD_CONF"
     sudo sed -i '' '/Include.*extra\/custom\.conf/d' "$HTTPD_CONF"
     success "Removed custom.conf Include from httpd.conf"
+
+    # Revert ServerName to commented default
+    if grep -q "^ServerName localhost" "$HTTPD_CONF"; then
+        sudo sed -i '' 's|^ServerName localhost|#ServerName www.example.com:80|' "$HTTPD_CONF"
+        success "Reverted ServerName to default"
+    fi
+
+    # Re-comment proxy/rewrite/headers modules enabled by setup
+    for _mod in mod_proxy.so mod_proxy_http.so mod_rewrite.so mod_proxy_wstunnel.so mod_headers.so; do
+        if grep -q "^LoadModule.*${_mod}" "$HTTPD_CONF"; then
+            sudo sed -i '' "s|^\(LoadModule.*${_mod}\)|#\1|" "$HTTPD_CONF"
+        fi
+    done
+    success "Re-commented proxy/rewrite/headers modules"
 fi
 
 # Remove site log directory
