@@ -291,7 +291,7 @@ else
     _zed_dmg="$TMPDIR_ZED/zed.dmg"
     _zed_mount="$TMPDIR_ZED/mount"
     _zed_verify_log="$TMPDIR_ZED/zed-verify.log"
-    _zed_hdiutil_log="$TMPDIR_ZED/zed-hdiutil.log"
+    _zed_dmg_verify_log="$TMPDIR_ZED/zed-dmg-verify.log"
 
     info "Downloading Zed..."
     case "$ZED_DMG_URL" in
@@ -299,10 +299,9 @@ else
             if _zed_effective_url="$(curl --proto '=https' --proto-redir '=https' --tlsv1.2 --progress-bar -L --fail --show-error --max-time 60 "$ZED_DMG_URL" -o "$_zed_dmg" -w '%{url_effective}')"; then
                 info "Downloaded Zed DMG from ${_zed_effective_url:-$ZED_DMG_URL}"
                 mkdir -p "$_zed_mount"
-                if hdiutil verify "$_zed_dmg" >"$_zed_hdiutil_log" 2>&1; then
+                if hdiutil verify "$_zed_dmg" >"$_zed_dmg_verify_log" 2>&1; then
                     if hdiutil attach "$_zed_dmg" -nobrowse -quiet -mountpoint "$_zed_mount"; then
                         if [ -d "$_zed_mount/Zed.app" ]; then
-                            touch "$_zed_verify_log"
                             if codesign --verify --deep --strict --verbose=2 "$_zed_mount/Zed.app" >"$_zed_verify_log" 2>&1 && \
                                spctl --assess --type execute "$_zed_mount/Zed.app" >>"$_zed_verify_log" 2>&1; then
                                 if sudo ditto "$_zed_mount/Zed.app" "$ZED_APP"; then
@@ -323,7 +322,7 @@ else
                     fi
                 else
                     warn "Downloaded Zed DMG failed verification — install manually later"
-                    cat "$_zed_hdiutil_log"
+                    cat "$_zed_dmg_verify_log"
                 fi
             else
                 warn "Failed to download Zed — install manually later"
