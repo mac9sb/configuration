@@ -292,8 +292,13 @@ else
         mkdir -p "$_zed_mount"
         if hdiutil attach "$_zed_dmg" -nobrowse -quiet -mountpoint "$_zed_mount"; then
             if [ -d "$_zed_mount/Zed.app" ]; then
-                sudo ditto "$_zed_mount/Zed.app" "$ZED_APP"
-                success "Zed installed to $ZED_APP"
+                if codesign --verify --deep --strict --verbose=2 "$_zed_mount/Zed.app" >/dev/null 2>&1 && \
+                   spctl --assess --type execute "$_zed_mount/Zed.app" >/dev/null 2>&1; then
+                    sudo ditto "$_zed_mount/Zed.app" "$ZED_APP"
+                    success "Zed installed to $ZED_APP"
+                else
+                    warn "Zed signature verification failed — install manually later"
+                fi
             else
                 warn "Zed app not found in DMG — install manually later"
             fi
@@ -305,7 +310,9 @@ else
         warn "Failed to download Zed — install manually later"
     fi
 
-    rm -rf "$TMPDIR_ZED"
+    if [ -d "$TMPDIR_ZED" ]; then
+        rm -rf "$TMPDIR_ZED"
+    fi
 fi
 
 # =============================================================================
