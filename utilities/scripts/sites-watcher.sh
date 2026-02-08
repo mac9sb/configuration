@@ -137,6 +137,7 @@ sync_cloudflared_ingress() {
 
     _primary_domain="${PRIMARY_DOMAIN:-}"
     # Directory names with dots represent custom domains; subdomains never include dots.
+    # If a primary domain is configured, exclude it from the custom domain list.
     _custom_domains="$(printf '%s' "$current_state" | awk -F: -v primary="$_primary_domain" 'NF { if ($1 ~ /\./ && (primary == "" || $1 != primary)) print $1 }' | sort -u)"
     _block_file="$(mktemp "${TMPDIR:-/tmp}/cloudflared.ingress.XXXXXX")"
     if [ -n "$_custom_domains" ]; then
@@ -148,6 +149,7 @@ sync_cloudflared_ingress() {
     fi
 
     _tmp_config="$(mktemp "${TMPDIR:-/tmp}/cloudflared.config.XXXXXX")"
+    # Replace the contents between ingress markers with the generated block.
     awk -v begin="$INGRESS_BEGIN" -v end="$INGRESS_END" -v block="$_block_file" '
         $0 ~ begin {
             print
@@ -167,6 +169,7 @@ sync_cloudflared_ingress() {
             log "Updated cloudflared ingress entries for custom domains (restart cloudflared to apply)"
         else
             log "ERROR: Failed to update cloudflared ingress entries"
+            return 1
         fi
     fi
 
