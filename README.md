@@ -55,7 +55,7 @@ Internet → Cloudflare Tunnel (maclong) → Apache :80 → VirtualHost routing
 
 ## Submodules
 
-Submodules are the **only** source of truth for what repos exist. Adding or removing a submodule is all you need to do — everything else is discovered automatically.
+Submodules are the source of truth for what repos exist and for Apache/server-manager config. Adding or removing a submodule is all you need to do for primary + subdomain sites — custom domains still require a cloudflared ingress + DNS entry (see below).
 
 ### Adding
 
@@ -92,7 +92,7 @@ git commit -m "Update <name> submodule"
 
 ## Domain Routing
 
-Domain routing is derived entirely from site directory names and the primary domain configured in `utilities/cloudflared/config.yml`:
+Apache routing is derived entirely from site directory names and the primary domain configured in `utilities/cloudflared/config.yml` (cloudflared ingress entries are still required for custom domains):
 
 ```
 # primary-domain: maclong.dev
