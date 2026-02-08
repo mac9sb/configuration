@@ -457,7 +457,7 @@ for _dir in "$SITES_DIR"/*/; do
         db_set_site "$_name" "static"
 
         # Path-based entry (always — for localhost dev access)
-        render_template "$APACHE_TMPL_DIR/static-site.conf.tmpl" \
+        render_template "$APACHE_TMPL_DIR/static-site.conf.template" \
             "SITE_NAME=$_name" \
             "OUTPUT_DIR=$_output_dir" \
             "LOG_DIR=$APACHE_LOG_DIR" \
@@ -467,7 +467,7 @@ for _dir in "$SITES_DIR"/*/; do
         # VirtualHost entry (domain or subdomain)
         _domain="$(resolve_domain "$_name")" || true
         if [ -n "$_domain" ]; then
-            render_template "$APACHE_TMPL_DIR/static-vhost.conf.tmpl" \
+            render_template "$APACHE_TMPL_DIR/static-vhost.conf.template" \
                 "SITE_NAME=$_name" \
                 "DOMAIN=$_domain" \
                 "OUTPUT_DIR=$_output_dir" \
@@ -492,7 +492,7 @@ for _dir in "$SITES_DIR"/*/; do
             db_set_site "$_name" "server"
 
             # Path-based entry (always — for localhost dev access)
-            render_template "$APACHE_TMPL_DIR/server-site.conf.tmpl" \
+            render_template "$APACHE_TMPL_DIR/server-site.conf.template" \
                 "SITE_NAME=$_name" \
                 "PORT=$_port" \
                 "LOG_DIR=$APACHE_LOG_DIR" \
@@ -502,7 +502,7 @@ for _dir in "$SITES_DIR"/*/; do
             # VirtualHost entry (domain or subdomain)
             _domain="$(resolve_domain "$_name")" || true
             if [ -n "$_domain" ]; then
-                render_template "$APACHE_TMPL_DIR/server-vhost.conf.tmpl" \
+                render_template "$APACHE_TMPL_DIR/server-vhost.conf.template" \
                     "SITE_NAME=$_name" \
                     "DOMAIN=$_domain" \
                     "PORT=$_port" \
