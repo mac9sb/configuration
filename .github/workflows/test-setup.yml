@@ -710,9 +710,9 @@ jobs:
           OLD_PID="$(sqlite3 "$DB" "SELECT pid FROM servers WHERE name = 'test-server';")"
           OLD_MTIME="$(sqlite3 "$DB" "SELECT binary_mtime FROM servers WHERE name = 'test-server';")"
 
-          # Rebuild the binary (changes mtime)
-          cd "$TEST_APP" && swift build -c release
-          sleep 8
+          # Rebuild the binary (changes mtime) — touch source to force recompilation
+          cd "$TEST_APP" && touch Sources/main.swift && swift build -c release
+          sleep 10
 
           NEW_PID="$(sqlite3 "$DB" "SELECT pid FROM servers WHERE name = 'test-server';")"
           NEW_MTIME="$(sqlite3 "$DB" "SELECT binary_mtime FROM servers WHERE name = 'test-server';")"
@@ -787,8 +787,8 @@ jobs:
           fi
 
           # Restore the good binary for subsequent tests
-          cd "$TEST_APP" && swift build -c release
-          sleep 8
+          cd "$TEST_APP" && touch Sources/main.swift && swift build -c release
+          sleep 10
 
       - name: "server-manager: handles SIGUSR1 restart request"
         run: |
