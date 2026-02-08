@@ -10,6 +10,8 @@
 #  only regenerates config / restarts services when something has changed.
 #
 #  Uses template files from ~/Developer/utilities/ instead of inline heredocs.
+#  launchd manages crash restarts natively — no per-site wrapper scripts.
+#  A single shared restart-server.sh handles all binary-rebuild restarts.
 #
 #  Triggered by launchd via:
 #    - WatchPaths on ~/Developer/sites (new project added/removed)
@@ -28,7 +30,6 @@ PORTS_FILE="$WATCHER_DIR/port-assignments"
 STATE_FILE="$WATCHER_DIR/sites-state"
 WATCHER_LOG="$WATCHER_DIR/sites-watcher.log"
 SERVER_PORT_START=8000
-MAX_CRASH_RETRIES=5
 UID_NUM="$(id -u)"
 
 # --- Template directories ---
@@ -183,8 +184,11 @@ done
 # =============================================================================
 #  6. Manage launchd agents for server binaries
 # =============================================================================
-#  - Create / update agents for current server sites
-#  - Remove agents for sites that are no longer servers
+#  launchd handles crash restarts natively (KeepAlive + ThrottleInterval).
+#  The server-agent plist runs the binary directly — no wrapper script.
+#  A single shared restart-server.sh handles all rebuild restarts.
+
+_restart_script="$SCRIPTS_TMPL_DIR/restart-server.sh"
 
 # Collect current server repos
 printf '%s' "$current_state" | while IFS=: read -r repo type; do
@@ -212,9 +216,6 @@ for repo in $previous_servers; do
         launchctl bootout "gui/${UID_NUM}/${_watcher_label}" 2>/dev/null || true
         rm -f "${LAUNCH_AGENTS_DIR}/${_label}.plist"
         rm -f "${LAUNCH_AGENTS_DIR}/${_watcher_label}.plist"
-        rm -f "$WATCHER_DIR/${repo}-run.sh"
-        rm -f "$WATCHER_DIR/${repo}-restart.sh"
-        rm -f "$WATCHER_DIR/${repo}.crash_count"
     fi
 done
 
@@ -225,25 +226,14 @@ for repo in $current_servers; do
     _port="$(get_port "$repo")"
     _label="com.${GITHUB_USER}.${repo}"
     _watcher_label="${_label}.watcher"
-    _crash_file="$WATCHER_DIR/${repo}.crash_count"
 
-    # -- Crash-guarded run wrapper (rendered from template) --
-    _wrapper="$WATCHER_DIR/${repo}-run.sh"
-    render_template "$SCRIPTS_TMPL_DIR/crash-wrapper.sh.tmpl" \
-        "SITE_NAME=$repo" \
-        "CRASH_COUNT_FILE=$_crash_file" \
-        "MAX_RETRIES=$MAX_CRASH_RETRIES" \
-        "PORT=$_port" \
-        "BINARY_PATH=$_binary" \
-        "WATCHER_DIR=$WATCHER_DIR" \
-        > "$_wrapper"
-    chmod +x "$_wrapper"
-
-    # -- Server launchd plist (rendered from template) --
+    # Server agent — runs the binary directly, launchd manages restarts
     _plist="${LAUNCH_AGENTS_DIR}/${_label}.plist"
     render_template "$LAUNCHD_TMPL_DIR/server-agent.plist.tmpl" \
         "LABEL=$_label" \
-        "WRAPPER_SCRIPT=$_wrapper" \
+        "BINARY_PATH=$_binary" \
+        "WORKING_DIR=$_dir" \
+        "PORT=$_port" \
         "LOG_FILE=$WATCHER_DIR/${repo}.log" \
         "ERROR_LOG_FILE=$WATCHER_DIR/${repo}.error.log" \
         > "$_plist"
@@ -252,24 +242,12 @@ for repo in $current_servers; do
     launchctl bootstrap "gui/${UID_NUM}" "$_plist" 2>/dev/null || launchctl load "$_plist" 2>/dev/null || true
     log "Server agent loaded: $_label (port $_port)"
 
-    # -- Binary watcher restart script (rendered from template) --
-    _restart_script="$WATCHER_DIR/${repo}-restart.sh"
-    _server_plist="${LAUNCH_AGENTS_DIR}/${_label}.plist"
-    render_template "$SCRIPTS_TMPL_DIR/restart-server.sh.tmpl" \
-        "SITE_NAME=$repo" \
-        "CRASH_COUNT_FILE=$_crash_file" \
-        "WATCHER_DIR=$WATCHER_DIR" \
-        "UID_NUM=$UID_NUM" \
-        "SERVER_LABEL=$_label" \
-        "SERVER_PLIST=$_server_plist" \
-        > "$_restart_script"
-    chmod +x "$_restart_script"
-
-    # -- Watcher launchd plist (rendered from template) --
+    # Watcher agent — calls shared restart-server.sh with label as $1
     _watcher_plist="${LAUNCH_AGENTS_DIR}/${_watcher_label}.plist"
     render_template "$LAUNCHD_TMPL_DIR/watcher-agent.plist.tmpl" \
         "LABEL=$_watcher_label" \
         "RESTART_SCRIPT=$_restart_script" \
+        "SERVER_LABEL=$_label" \
         "BINARY_PATH=$_binary" \
         "LOG_FILE=$WATCHER_DIR/${repo}-watcher.log" \
         "ERROR_LOG_FILE=$WATCHER_DIR/${repo}-watcher.error.log" \

@@ -45,10 +45,9 @@ DOTFILES_DIR="$UTILITIES_DIR/dotfiles"
 
 # --- Port allocation ----------------------------------------------------------
 SERVER_PORT_START=8000
-MAX_CRASH_RETRIES=5
 
 UID_NUM="$(id -u)"
-TOTAL_STEPS=13
+TOTAL_STEPS=12
 
 # =============================================================================
 #  Utility Functions
@@ -85,7 +84,7 @@ render_template() {
 #  Step 1 — Touch ID for sudo
 # =============================================================================
 
-info "Step 1/${TOTAL_STEPS}: Touch ID for sudo"
+info "Step 1/${TOTAL_STEPS}: Touch ID for sudo (requires password once)"
 if [ ! -f /etc/pam.d/sudo_local ] || ! grep -q "pam_tid.so" /etc/pam.d/sudo_local 2>/dev/null; then
     sudo cp /etc/pam.d/sudo_local.template /etc/pam.d/sudo_local
     sudo sed -i '' 's/^#auth/auth/' /etc/pam.d/sudo_local
@@ -382,58 +381,17 @@ rm -f "$_conf_file"
 success "  Wrote $CUSTOM_CONF"
 
 # =============================================================================
-#  Step 10 — launchd agents for server binaries
+#  Step 10 — launchd agents + file watchers for server binaries
 # =============================================================================
 
-info "Step 10/${TOTAL_STEPS}: Creating launchd agents for server binaries"
+info "Step 10/${TOTAL_STEPS}: Creating launchd agents and file watchers for server binaries"
 
-server_port=$SERVER_PORT_START
+# launchd handles crash restarts natively via KeepAlive + ThrottleInterval.
+# The server-agent plist runs the binary directly (no wrapper script).
+# A shared restart-server.sh handles all binary-rebuild restarts.
 
-for _dir in "$SITES_DIR"/*/; do
-    [ ! -d "$_dir" ] && continue
-    _name="$(basename "$_dir")"
-    _binary="$_dir/.build/release/Application"
-
-    # Only server sites (have binary but no .output)
-    [ -d "$_dir/.output" ] && continue
-    [ ! -f "$_binary" ] && continue
-
-    _label="com.${GITHUB_USER}.${_name}"
-    _crash_file="$WATCHER_DIR/${_name}.crash_count"
-
-    # Render crash-guarded wrapper from template
-    _wrapper="$WATCHER_DIR/${_name}-run.sh"
-    render_template "$SCRIPTS_TMPL_DIR/crash-wrapper.sh.tmpl" \
-        "SITE_NAME=$_name" \
-        "CRASH_COUNT_FILE=$_crash_file" \
-        "MAX_RETRIES=$MAX_CRASH_RETRIES" \
-        "PORT=$server_port" \
-        "BINARY_PATH=$_binary" \
-        "WATCHER_DIR=$WATCHER_DIR" \
-        > "$_wrapper"
-    chmod +x "$_wrapper"
-
-    # Render launchd plist from template
-    _plist="${LAUNCH_AGENTS_DIR}/${_label}.plist"
-    render_template "$LAUNCHD_TMPL_DIR/server-agent.plist.tmpl" \
-        "LABEL=$_label" \
-        "WRAPPER_SCRIPT=$_wrapper" \
-        "LOG_FILE=$WATCHER_DIR/${_name}.log" \
-        "ERROR_LOG_FILE=$WATCHER_DIR/${_name}.error.log" \
-        > "$_plist"
-
-    launchctl bootout "gui/${UID_NUM}/${_label}" 2>/dev/null || true
-    launchctl bootstrap "gui/${UID_NUM}" "$_plist" 2>/dev/null || launchctl load "$_plist" 2>/dev/null || true
-    success "  launchd agent created and loaded: $_label (port $server_port)"
-
-    server_port=$((server_port + 1))
-done
-
-# =============================================================================
-#  Step 11 — File watchers for server binary hot-reload
-# =============================================================================
-
-info "Step 11/${TOTAL_STEPS}: Setting up file watchers for server binaries"
+_restart_script="$SCRIPTS_TMPL_DIR/restart-server.sh"
+chmod +x "$_restart_script" 2>/dev/null || true
 
 server_port=$SERVER_PORT_START
 
@@ -448,26 +406,28 @@ for _dir in "$SITES_DIR"/*/; do
 
     _label="com.${GITHUB_USER}.${_name}"
     _watcher_label="${_label}.watcher"
-    _crash_file="$WATCHER_DIR/${_name}.crash_count"
+
+    # Server agent — runs the binary directly, launchd manages restarts
     _plist="${LAUNCH_AGENTS_DIR}/${_label}.plist"
+    render_template "$LAUNCHD_TMPL_DIR/server-agent.plist.tmpl" \
+        "LABEL=$_label" \
+        "BINARY_PATH=$_binary" \
+        "WORKING_DIR=$_dir" \
+        "PORT=$server_port" \
+        "LOG_FILE=$WATCHER_DIR/${_name}.log" \
+        "ERROR_LOG_FILE=$WATCHER_DIR/${_name}.error.log" \
+        > "$_plist"
 
-    # Render restart script from template
-    _restart_script="$WATCHER_DIR/${_name}-restart.sh"
-    render_template "$SCRIPTS_TMPL_DIR/restart-server.sh.tmpl" \
-        "SITE_NAME=$_name" \
-        "CRASH_COUNT_FILE=$_crash_file" \
-        "WATCHER_DIR=$WATCHER_DIR" \
-        "UID_NUM=$UID_NUM" \
-        "SERVER_LABEL=$_label" \
-        "SERVER_PLIST=$_plist" \
-        > "$_restart_script"
-    chmod +x "$_restart_script"
+    launchctl bootout "gui/${UID_NUM}/${_label}" 2>/dev/null || true
+    launchctl bootstrap "gui/${UID_NUM}" "$_plist" 2>/dev/null || launchctl load "$_plist" 2>/dev/null || true
+    success "  Server agent: $_label (port $server_port)"
 
-    # Render watcher plist from template
+    # Watcher agent — calls shared restart-server.sh with label as $1
     _watcher_plist="${LAUNCH_AGENTS_DIR}/${_watcher_label}.plist"
     render_template "$LAUNCHD_TMPL_DIR/watcher-agent.plist.tmpl" \
         "LABEL=$_watcher_label" \
         "RESTART_SCRIPT=$_restart_script" \
+        "SERVER_LABEL=$_label" \
         "BINARY_PATH=$_binary" \
         "LOG_FILE=$WATCHER_DIR/${_name}-watcher.log" \
         "ERROR_LOG_FILE=$WATCHER_DIR/${_name}-watcher.error.log" \
@@ -475,16 +435,16 @@ for _dir in "$SITES_DIR"/*/; do
 
     launchctl bootout "gui/${UID_NUM}/${_watcher_label}" 2>/dev/null || true
     launchctl bootstrap "gui/${UID_NUM}" "$_watcher_plist" 2>/dev/null || launchctl load "$_watcher_plist" 2>/dev/null || true
-    success "  Watcher agent created: $_watcher_label → watches $_binary"
+    success "  Watcher agent: $_watcher_label → watches $_binary"
 
     server_port=$((server_port + 1))
 done
 
 # =============================================================================
-#  Step 12 — Sites watcher launchd agent
+#  Step 11 — Sites watcher launchd agent
 # =============================================================================
 
-info "Step 12/${TOTAL_STEPS}: Installing sites-watcher launchd agent"
+info "Step 11/${TOTAL_STEPS}: Installing sites-watcher launchd agent"
 
 _sites_watcher_script="$SCRIPTS_TMPL_DIR/sites-watcher.sh"
 _sites_watcher_label="com.${GITHUB_USER}.sites-watcher"
@@ -510,10 +470,10 @@ else
 fi
 
 # =============================================================================
-#  Step 13 — Test & restart Apache
+#  Step 12 — Test & restart Apache
 # =============================================================================
 
-info "Step 13/${TOTAL_STEPS}: Testing and restarting Apache"
+info "Step 12/${TOTAL_STEPS}: Testing and restarting Apache"
 
 # Set permissions on all static site output directories
 for _dir in "$SITES_DIR"/*/; do

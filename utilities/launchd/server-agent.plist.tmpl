@@ -8,9 +8,11 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/bin/sh</string>
-        <string>{{WRAPPER_SCRIPT}}</string>
+        <string>{{BINARY_PATH}}</string>
     </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{WORKING_DIR}}</string>
 
     <key>RunAtLoad</key>
     <true/>
@@ -32,6 +34,8 @@
 
     <key>EnvironmentVariables</key>
     <dict>
+        <key>PORT</key>
+        <string>{{PORT}}</string>
         <key>PATH</key>
         <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     </dict>

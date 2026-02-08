@@ -62,10 +62,9 @@ There are no hardcoded repo arrays — everything is derived from `.gitmodules` 
 | 7 | Initialize git submodules (`git submodule update --init --recursive`) |
 | 8 | Build all Swift packages found under `sites/` and `tooling/` |
 | 9 | Configure Apache by scanning `sites/` for `.output` and `.build/release/Application` |
-| 10 | Create launchd agents for detected server binaries |
-| 11 | Create file watchers for binary hot-reload |
-| 12 | Install sites-watcher launchd agent |
-| 13 | Test & restart Apache |
+| 10 | Create launchd agents + file watchers for detected server binaries |
+| 11 | Install sites-watcher launchd agent |
+| 12 | Test & restart Apache |
 
 ## Submodules
 
@@ -122,7 +121,7 @@ All generated configuration uses `{{PLACEHOLDER}}` templates from `utilities/`. 
 |-----------|-----------|---------|
 | `apache/` | `static-site.conf.tmpl`, `server-site.conf.tmpl` | Per-site Apache config blocks |
 | `launchd/` | `server-agent.plist.tmpl`, `watcher-agent.plist.tmpl` | launchd plists for servers & watchers |
-| `scripts/` | `crash-wrapper.sh.tmpl`, `restart-server.sh.tmpl` | Crash-guarded launcher & hot-reload restart |
+| `scripts/` | `restart-server.sh`, `sites-watcher.sh` | Shared restart script & auto-detection watcher |
 
 ## Dotfiles
 
@@ -147,15 +146,14 @@ A launchd agent (`com.mac9sb.sites-watcher`) monitors `~/Developer/sites/` and a
 
 ## Server Binaries
 
-Each server site gets:
+Each server site gets two launchd plists — no per-site scripts are generated:
 
-1. **Crash-guarded wrapper** — tracks consecutive crashes, sends macOS notification after 5 failures
-2. **launchd agent** — starts at login, keeps alive, throttles restarts
-3. **Binary watcher** — restarts the server when `.build/release/Application` changes (after `swift build -c release`)
+1. **Server agent** — runs the binary directly; launchd handles crash restarts natively via `KeepAlive` + `ThrottleInterval`
+2. **Watcher agent** — monitors `.build/release/Application` via `WatchPaths` and calls the single shared `restart-server.sh` to bounce the server on rebuild
 
 Ports are assigned deterministically starting at `8000` and persisted in `.watchers/port-assignments`.
 
-k# Cloudflare Tunnel
+## Cloudflare Tunnel
 
 Tunnel routes are managed remotely via the Cloudflare dashboard, not local config files.
 
