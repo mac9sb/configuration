@@ -51,6 +51,8 @@ WATCHER_LOG="$LOG_DIR/sites-watcher.log"
 
 APACHE_TMPL_DIR="$UTILITIES_DIR/apache"
 CLOUDFLARED_CONFIG="$UTILITIES_DIR/cloudflared/config.yml"
+INGRESS_BEGIN="# sites-watcher:BEGIN"
+INGRESS_END="# sites-watcher:END"
 
 # Source the shared SQLite helpers
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -121,6 +123,72 @@ resolve_domain() {
     esac
 }
 
+# Extract custom domain names from the current state list.
+extract_custom_domains() {
+    _primary="$1"
+    printf '%s' "$current_state" | awk -F: -v primary="$_primary" 'NF { if ($1 ~ /\./ && (primary == "" || $1 != primary)) print $1 }' | sort -u
+}
+
+# =============================================================================
+#  Sync cloudflared ingress entries for custom domains
+# =============================================================================
+
+sync_cloudflared_ingress() {
+    [ ! -f "$CLOUDFLARED_CONFIG" ] && return 0
+
+    _begin_line="$(grep -n "$INGRESS_BEGIN" "$CLOUDFLARED_CONFIG" | head -1 | cut -d: -f1)"
+    _end_line="$(grep -n "$INGRESS_END" "$CLOUDFLARED_CONFIG" | head -1 | cut -d: -f1)"
+    if [ -z "$_begin_line" ] || [ -z "$_end_line" ] || [ "$_end_line" -lt "$_begin_line" ]; then
+        log "WARN: cloudflared config ingress markers missing or out of order — skipping custom domain sync"
+        return 0
+    fi
+
+    _primary_domain="${PRIMARY_DOMAIN:-}"
+    # Directory names with dots represent custom domains; subdomains never include dots in this setup.
+    # Filter criteria: (1) name contains a dot, (2) skip the primary domain when configured.
+    _custom_domains="$(extract_custom_domains "$_primary_domain")"
+    _block_file="$(mktemp "${TMPDIR:-/tmp}/cloudflared.ingress.XXXXXX")"
+    if [ -n "$_custom_domains" ]; then
+        for _domain in $_custom_domains; do
+            printf '  - hostname: %s\n    service: http://localhost:80\n' "$_domain" >> "$_block_file"
+        done
+    else
+        printf '  # (none)\n' >> "$_block_file"
+    fi
+
+    _tmp_config="$(mktemp "${TMPDIR:-/tmp}/cloudflared.config.XXXXXX")"
+    # Replace the contents between ingress markers with the generated block.
+    awk -v begin="$INGRESS_BEGIN" -v end="$INGRESS_END" -v block_file="$_block_file" '
+        $0 ~ begin {
+            print
+            while ((getline block_line < block_file) > 0) {
+                print block_line
+            }
+            close(block_file)
+            in_block=1
+            next
+        }
+        $0 ~ end { in_block=0; print; next }
+        !in_block { print }
+    ' "$CLOUDFLARED_CONFIG" > "$_tmp_config"
+
+    _sync_failed=0
+    if ! cmp -s "$_tmp_config" "$CLOUDFLARED_CONFIG"; then
+        if cp "$_tmp_config" "$CLOUDFLARED_CONFIG"; then
+            log "Updated cloudflared ingress entries for custom domains; restart cloudflared to apply"
+            log "Restart cloudflared: launchctl kickstart -k gui/$(id -u)/com.mac9sb.cloudflared"
+        else
+            log "ERROR: Failed to update cloudflared ingress entries"
+            _sync_failed=1
+        fi
+    fi
+
+    rm -f "$_block_file" "$_tmp_config"
+    if [ "$_sync_failed" -ne 0 ]; then
+        return 1
+    fi
+}
+
 # =============================================================================
 #  Ensure directories exist & initialise database
 # =============================================================================
@@ -158,7 +226,12 @@ done
 current_state="$(printf '%s' "$current_state" | sort)"
 
 # =============================================================================
-#  2. Compare with previous state — exit early if nothing changed
+#  2. Sync cloudflared ingress entries from filesystem
+# =============================================================================
+sync_cloudflared_ingress
+
+# =============================================================================
+#  3. Compare with previous state — exit early if nothing changed
 # =============================================================================
 previous_state="$(db_get_sites_state)"
 
@@ -171,7 +244,7 @@ log "Previous: $(printf '%s' "$previous_state" | tr '\n' ' ')"
 log "Current:  $(printf '%s' "$current_state" | tr '\n' ' ')"
 
 # =============================================================================
-#  3. Update site records in the database (upsert + prune removed sites)
+#  4. Update site records in the database (upsert + prune removed sites)
 # =============================================================================
 
 printf '%s' "$current_state" | while IFS=: read -r repo type; do
@@ -182,7 +255,7 @@ done
 db_prune_sites "$_discovered_names"
 
 # =============================================================================
-#  4. Generate Apache custom.conf from templates
+#  5. Generate Apache custom.conf from templates
 # =============================================================================
 #
 #  Every site gets TWO config entries:
@@ -346,7 +419,7 @@ fi
 rm -f "$_old_conf"
 
 # =============================================================================
-#  5. Set permissions on static site output directories
+#  6. Set permissions on static site output directories
 # =============================================================================
 printf '%s' "$current_state" | while IFS=: read -r repo type; do
     [ "$type" != "static" ] && continue
@@ -356,7 +429,7 @@ printf '%s' "$current_state" | while IFS=: read -r repo type; do
 done
 
 # =============================================================================
-#  6. Signal the server-manager to re-scan
+#  7. Signal the server-manager to re-scan
 # =============================================================================
 _mgr_pid="$(db_get_config "manager_pid")"
 if [ -n "$_mgr_pid" ]; then
@@ -371,12 +444,12 @@ else
 fi
 
 # =============================================================================
-#  7. Restart Apache (config already validated during atomic swap above)
+#  8. Restart Apache (config already validated during atomic swap above)
 # =============================================================================
 sudo apachectl restart
 log "Apache restarted successfully"
 
 # =============================================================================
-#  8. Done — state is already persisted in the database
+#  9. Done — state is already persisted in the database
 # =============================================================================
 log "State saved — done"
