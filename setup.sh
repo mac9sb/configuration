@@ -278,7 +278,7 @@ fi
 info "Step 6/${TOTAL_STEPS}: Installing Zed"
 
 ZED_APP="/Applications/Zed.app"
-ZED_DMG_VERSION="${ZED_DMG_VERSION:-0.222.4}" # version string like 0.222.4 from https://zed.dev/releases (override ZED_DMG_VERSION if needed)
+ZED_DMG_VERSION="${ZED_DMG_VERSION:-0.222.4}" # version like 0.222.4 from https://zed.dev/releases (bump here or override ZED_DMG_VERSION)
 case "$(uname -m)" in
     arm64|aarch64) ZED_ASSET="Zed-aarch64.dmg" ;;
     x86_64|amd64) ZED_ASSET="Zed-x86_64.dmg" ;;
@@ -291,7 +291,7 @@ elif [ -z "$ZED_ASSET" ]; then
     warn "Unsupported architecture for Zed DMG - install manually later"
 else
     TMPDIR_ZED="$(mktemp -d)"
-    ZED_DMG_URL="https://zed.dev/download-success?asset=${ZED_ASSET}&version=${ZED_DMG_VERSION}&channel=stable" # direct version+arch stable DMG (bypasses download page)
+    ZED_DMG_URL="https://zed.dev/download-success?asset=${ZED_ASSET}&version=${ZED_DMG_VERSION}&channel=stable" # download-success endpoint serves the version+arch stable DMG
     _zed_cleanup() {
         [ -d "$TMPDIR_ZED" ] && rm -rf "$TMPDIR_ZED"
     }
