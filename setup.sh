@@ -291,13 +291,15 @@ else
     _zed_dmg="$TMPDIR_ZED/zed.dmg"
     _zed_mount="$TMPDIR_ZED/mount"
     _zed_verify_log="$TMPDIR_ZED/zed-verify.log"
+    _zed_hdiutil_log="$TMPDIR_ZED/zed-hdiutil.log"
 
     info "Downloading Zed..."
     case "$ZED_DMG_URL" in
         https://*)
-            if curl --proto '=https' --proto-redir '=https' --tlsv1.2 --progress-bar -L --fail --max-time 60 "$ZED_DMG_URL" -o "$_zed_dmg"; then
+            if _zed_effective_url="$(curl --proto '=https' --proto-redir '=https' --tlsv1.2 --progress-bar -L --fail --show-error --max-time 60 "$ZED_DMG_URL" -o "$_zed_dmg" -w '%{url_effective}')"; then
+                info "Downloaded Zed DMG from ${_zed_effective_url:-$ZED_DMG_URL}"
                 mkdir -p "$_zed_mount"
-                if hdiutil verify "$_zed_dmg" -quiet; then
+                if hdiutil verify "$_zed_dmg" >"$_zed_hdiutil_log" 2>&1; then
                     if hdiutil attach "$_zed_dmg" -nobrowse -quiet -mountpoint "$_zed_mount"; then
                         if [ -d "$_zed_mount/Zed.app" ]; then
                             touch "$_zed_verify_log"
@@ -321,6 +323,7 @@ else
                     fi
                 else
                     warn "Downloaded Zed DMG failed verification — install manually later"
+                    cat "$_zed_hdiutil_log"
                 fi
             else
                 warn "Failed to download Zed — install manually later"
