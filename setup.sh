@@ -276,20 +276,30 @@ fi
 
 info "Step 6/${TOTAL_STEPS}: Installing GitHub CLI (gh)"
 if ! command_exists gh; then
-    info "Installing gh via Homebrew..."
-    if command_exists brew; then
-        if brew install gh >/dev/null 2>&1; then
-            if command_exists gh; then
-                success "gh installed: $(gh --version 2>&1 | head -1)"
+    GH_LATEST=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/cli/cli/releases/latest | sed 's|.*/||')
+    GH_VERSION="${GH_LATEST#v}"
+    GH_TAR_URL="https://github.com/cli/cli/releases/download/${GH_LATEST}/gh_${GH_VERSION}_macOS_arm64.tar.gz"
+    info "Downloading gh ${GH_LATEST}..."
+    TMPDIR_GH="$(mktemp -d)"
+    if curl -sL --fail --max-time 60 "$GH_TAR_URL" -o "$TMPDIR_GH/gh.tar.gz"; then
+        if tar -xzf "$TMPDIR_GH/gh.tar.gz" -C "$TMPDIR_GH" 2>/dev/null; then
+            if sudo mv "$TMPDIR_GH/gh_${GH_VERSION}_macOS_arm64/bin/gh" /usr/local/bin/gh 2>/dev/null; then
+                sudo chmod +x /usr/local/bin/gh
+                if command_exists gh; then
+                    success "gh installed: $(gh --version 2>&1 | head -1)"
+                else
+                    warn "gh binary moved but not found on PATH"
+                fi
             else
-                warn "gh installed but not found on PATH"
+                warn "Failed to move gh to /usr/local/bin — install manually later"
             fi
         else
-            warn "gh installation via brew failed — install manually later"
+            warn "Failed to extract gh tarball — install manually later"
         fi
     else
-        warn "Homebrew not found — install gh manually later"
+        warn "Failed to download gh — install manually later"
     fi
+    rm -rf "$TMPDIR_GH"
 else
     success "gh already installed: $(gh --version 2>&1 | head -1)"
 fi
@@ -300,16 +310,30 @@ fi
 
 info "Step 7/${TOTAL_STEPS}: Installing GitHub Copilot CLI"
 if ! command_exists github-copilot-cli; then
-    info "Installing GitHub Copilot CLI..."
-    if command_exists gh; then
-        if gh extension install github/gh-copilot >/dev/null 2>&1; then
-            success "GitHub Copilot CLI installed"
+    COPILOT_LATEST=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/github/gh-copilot/releases/latest | sed 's|.*/||')
+    COPILOT_VERSION="${COPILOT_LATEST#v}"
+    COPILOT_TAR_URL="https://github.com/github/gh-copilot/releases/download/${COPILOT_LATEST}/darwin-arm64.tar.gz"
+    info "Downloading GitHub Copilot CLI ${COPILOT_LATEST}..."
+    TMPDIR_COPILOT="$(mktemp -d)"
+    if curl -sL --fail --max-time 60 "$COPILOT_TAR_URL" -o "$TMPDIR_COPILOT/copilot.tar.gz"; then
+        if tar -xzf "$TMPDIR_COPILOT/copilot.tar.gz" -C "$TMPDIR_COPILOT" 2>/dev/null; then
+            if sudo mv "$TMPDIR_COPILOT/github-copilot-cli" /usr/local/bin/github-copilot-cli 2>/dev/null; then
+                sudo chmod +x /usr/local/bin/github-copilot-cli
+                if command_exists github-copilot-cli; then
+                    success "GitHub Copilot CLI installed: $(github-copilot-cli --version 2>&1 | head -1 || echo 'installed')"
+                else
+                    warn "Copilot CLI binary moved but not found on PATH"
+                fi
+            else
+                warn "Failed to move copilot binary to /usr/local/bin — install manually later"
+            fi
         else
-            warn "Copilot CLI installation failed — install manually: gh extension install github/gh-copilot"
+            warn "Failed to extract Copilot CLI tarball — install manually later"
         fi
     else
-        warn "gh CLI not available — install gh first to enable Copilot CLI"
+        warn "Failed to download Copilot CLI — install manually later"
     fi
+    rm -rf "$TMPDIR_COPILOT"
 else
     success "GitHub Copilot CLI already installed"
 fi
