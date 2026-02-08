@@ -230,17 +230,23 @@ fi
 info "Step 5/${TOTAL_STEPS}: Installing cloudflared"
 if ! command_exists cloudflared; then
     CF_LATEST=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/cloudflare/cloudflared/releases/latest | sed 's|.*/||')
-    CF_PKG_URL="https://github.com/cloudflare/cloudflared/releases/download/${CF_LATEST}/cloudflared-darwin-arm64.pkg"
+    CF_PKG_URL="https://github.com/cloudflare/cloudflared/releases/download/${CF_LATEST}/cloudflared-arm64.pkg"
     info "Downloading cloudflared ${CF_LATEST}..."
     TMPDIR_CF="$(mktemp -d)"
-    curl -sL "$CF_PKG_URL" -o "$TMPDIR_CF/cloudflared.pkg"
-    sudo installer -pkg "$TMPDIR_CF/cloudflared.pkg" -target / >/dev/null 2>&1
-    rm -rf "$TMPDIR_CF"
-    if command_exists cloudflared; then
-        success "cloudflared installed: $(cloudflared --version 2>&1 | head -1)"
+    if curl -sL --fail --max-time 60 "$CF_PKG_URL" -o "$TMPDIR_CF/cloudflared.pkg"; then
+        if sudo installer -pkg "$TMPDIR_CF/cloudflared.pkg" -target / >/dev/null 2>&1; then
+            if command_exists cloudflared; then
+                success "cloudflared installed: $(cloudflared --version 2>&1 | head -1)"
+            else
+                warn "cloudflared pkg installed but binary not found on PATH — check /usr/local/bin"
+            fi
+        else
+            warn "cloudflared pkg installer failed — install manually later"
+        fi
     else
-        warn "cloudflared pkg installed but binary not found on PATH — check /usr/local/bin"
+        warn "Failed to download cloudflared — install manually later"
     fi
+    rm -rf "$TMPDIR_CF"
 else
     success "cloudflared already installed: $(cloudflared --version 2>&1 | head -1)"
 fi
@@ -294,31 +300,47 @@ for _dir in "$TOOLING_DIR"/*/; do
     _name="$(basename "$_dir")"
     if [ -f "$_dir/Package.swift" ]; then
         info "  Building tooling: $_name..."
-        (cd "$_dir" && swift build -c release 2>&1 | tail -1)
-        success "  $_name built"
+        _build_log="$(mktemp)"
+        if (cd "$_dir" && swift build -c release > "$_build_log" 2>&1); then
+            tail -1 "$_build_log"
+            success "  $_name built (release)"
+        else
+            tail -5 "$_build_log"
+            warn "  $_name build failed"
+        fi
+        rm -f "$_build_log"
     fi
 done
 
 # Build any Swift package found under sites/
-# After building, determine type by running the binary once with a timeout —
-# if it exits cleanly and produces .output, it's static. Otherwise it's a
-# server that launchd will manage. The timeout prevents hangs from server
-# binaries that block waiting for connections.
+# All sites are built in release mode. After building, the binary is run
+# with a timeout to classify:
+#   - Exits cleanly and produces .output → static site
+#   - Does not exit within the timeout   → server (launchd will manage)
 for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
     _name="$(basename "$_dir")"
     if [ -f "$_dir/Package.swift" ]; then
-        _binary="$_dir/.build/release/Application"
+        _exec_name="$(get_exec_name "$_dir")" || true
+        if [ -z "$_exec_name" ]; then
+            warn "  $_name: no executable target found in Package.swift — skipping"
+            continue
+        fi
+
+        _binary="$_dir/.build/release/$_exec_name"
 
         # Preserve current run binary as backup before rebuilding
         if [ -f "${_binary}.run" ]; then
             cp -f "${_binary}.run" "${_binary}.bak" 2>/dev/null || true
         fi
 
-        info "  Building site: $_name..."
-        if (cd "$_dir" && swift build -c release 2>&1 | tail -1); then
-            success "  $_name built"
+        info "  Building site: $_name (release, executable: $_exec_name)..."
+        _build_log="$(mktemp)"
+        if (cd "$_dir" && swift build -c release > "$_build_log" 2>&1); then
+            tail -1 "$_build_log"
+            success "  $_name built (release)"
         else
+            tail -5 "$_build_log"
             warn "  $_name build failed"
             # Restore backup if build produced no binary
             if [ ! -f "$_binary" ] && [ -f "${_binary}.bak" ]; then
@@ -326,20 +348,25 @@ for _dir in "$SITES_DIR"/*/; do
                 warn "  Restored backup binary for $_name"
             fi
         fi
+        rm -f "$_build_log"
 
-        # If no .output exists yet but the binary is present, try running it
-        # once with a timeout to see if it generates static output.
+        # Classify by running: if the binary exits and produces .output
+        # it's a static site generator. If it blocks, it's a server.
         if [ ! -d "$_dir/.output" ] && [ -f "$_binary" ]; then
             info "  Classifying $_name (timeout ${CLASSIFY_TIMEOUT}s)..."
-            if run_with_timeout "$CLASSIFY_TIMEOUT" sh -c "cd '$_dir' && .build/release/Application" 2>/dev/null; then
-                success "  $_name exited cleanly"
+            if run_with_timeout "$CLASSIFY_TIMEOUT" sh -c "cd '$_dir' && '.build/release/$_exec_name'" 2>/dev/null; then
+                if [ -d "$_dir/.output" ]; then
+                    success "  $_name → static site (.output generated)"
+                else
+                    success "  $_name exited cleanly (no .output produced)"
+                fi
             else
-                success "  $_name did not exit within ${CLASSIFY_TIMEOUT}s (likely a server)"
+                success "  $_name did not exit within ${CLASSIFY_TIMEOUT}s (server)"
             fi
         fi
 
         if [ -d "$_dir/.output" ]; then
-            success "  $_name → static site (.output generated)"
+            success "  $_name → static site"
         elif [ -f "$_binary" ]; then
             success "  $_name → server binary (launchd will manage)"
         fi
@@ -354,7 +381,7 @@ info "Step 8/${TOTAL_STEPS}: Configuring Apache"
 
 enable_module() {
     _mod="$1"
-    if grep -q "^#.*$_mod" "$HTTPD_CONF"; then
+    if grep -q "^#.*${_mod}" "$HTTPD_CONF"; then
         sudo sed -i '' "s|^#\\(.*$_mod\\)|\\1|" "$HTTPD_CONF"
         success "  Enabled $_mod"
     else
@@ -379,7 +406,7 @@ sudo mkdir -p "$APACHE_LOG_DIR"
 sudo chown root:wheel "$APACHE_LOG_DIR"
 
 # Build custom.conf by scanning sites/ for static (.output) and server
-# (.build/release/Application) projects — no hardcoded arrays.
+# (.build/release/<exec>) projects — no hardcoded arrays.
 # Port assignments come from the SQLite database (initialised in step 9).
 #
 # Domain routing is derived from directory names + primary domain from
@@ -452,31 +479,40 @@ for _dir in "$SITES_DIR"/*/; do
             success "  localhost/$_name → static (path-based only)"
         fi
 
-    elif [ -f "$_dir/.build/release/Application" ]; then
-        _port="$(db_get_port "$_name")"
-        db_set_site "$_name" "server"
+    else
+        # Check for a server binary using the executable name from Package.swift
+        _exec_name="$(get_exec_name "$_dir")" || true
+        _has_binary=false
+        if [ -n "$_exec_name" ] && [ -f "$_dir/.build/release/$_exec_name" ]; then
+            _has_binary=true
+        fi
 
-        # Path-based entry (always — for localhost dev access)
-        render_template "$APACHE_TMPL_DIR/server-site.conf.tmpl" \
-            "SITE_NAME=$_name" \
-            "PORT=$_port" \
-            "LOG_DIR=$APACHE_LOG_DIR" \
-            >> "$_default_file"
-        printf '\n' >> "$_default_file"
+        if [ "$_has_binary" = true ]; then
+            _port="$(db_get_port "$_name")"
+            db_set_site "$_name" "server"
 
-        # VirtualHost entry (domain or subdomain)
-        _domain="$(resolve_domain "$_name")" || true
-        if [ -n "$_domain" ]; then
-            render_template "$APACHE_TMPL_DIR/server-vhost.conf.tmpl" \
+            # Path-based entry (always — for localhost dev access)
+            render_template "$APACHE_TMPL_DIR/server-site.conf.tmpl" \
                 "SITE_NAME=$_name" \
-                "DOMAIN=$_domain" \
                 "PORT=$_port" \
                 "LOG_DIR=$APACHE_LOG_DIR" \
-                >> "$_vhost_file"
-            printf '\n' >> "$_vhost_file"
-            success "  $_domain → proxy :$_port ($_name)"
-        else
-            success "  localhost/$_name → proxy :$_port (path-based only)"
+                >> "$_default_file"
+            printf '\n' >> "$_default_file"
+
+            # VirtualHost entry (domain or subdomain)
+            _domain="$(resolve_domain "$_name")" || true
+            if [ -n "$_domain" ]; then
+                render_template "$APACHE_TMPL_DIR/server-vhost.conf.tmpl" \
+                    "SITE_NAME=$_name" \
+                    "DOMAIN=$_domain" \
+                    "PORT=$_port" \
+                    "LOG_DIR=$APACHE_LOG_DIR" \
+                    >> "$_vhost_file"
+                printf '\n' >> "$_vhost_file"
+                success "  $_domain → proxy :$_port ($_name)"
+            else
+                success "  localhost/$_name → proxy :$_port (path-based only)"
+            fi
         fi
     fi
 done
@@ -595,14 +631,16 @@ rm -f "$STATE_DIR/server-manager.pid" "$STATE_DIR/restart-request" 2>/dev/null
 for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
     _name="$(basename "$_dir")"
-    _binary="$_dir/.build/release/Application"
 
     # Only server sites (have binary but no .output)
     [ -d "$_dir/.output" ] && continue
+    _exec_name="$(get_exec_name "$_dir")" || true
+    [ -z "$_exec_name" ] && continue
+    _binary="$_dir/.build/release/$_exec_name"
     [ ! -f "$_binary" ] && continue
 
     _port="$(db_get_port "$_name")"
-    success "  Server: $_name → port $_port"
+    success "  Server: $_name → port $_port (binary: $_exec_name)"
 done
 
 chmod +x "$SCRIPTS_DIR/restart-server.sh" 2>/dev/null || true
@@ -721,7 +759,7 @@ if sudo apachectl configtest 2>&1; then
     sudo apachectl restart
     success "Apache restarted"
 else
-    error "Apache configuration test failed — check $CUSTOM_CONF and $HTTPD_CONF"
+    warn "Apache configuration test failed — check $CUSTOM_CONF and $HTTPD_CONF"
 fi
 
 # =============================================================================
@@ -752,43 +790,31 @@ printf "\033[1;32m==============================================================
 printf "\033[1;32m  Setup Complete!\033[0m\n"
 printf "\033[1;32m=============================================================================\033[0m\n"
 printf "\n"
-printf "  \033[1mDotfiles:\033[0m        Symlinked from %s/\n" "$DOTFILES_DIR"
-for _src in "$DOTFILES_DIR"/*; do
-    [ ! -f "$_src" ] && continue
-    _base="$(basename "$_src")"
-    if [ "$_base" = "ssh_config" ]; then
-        printf "    ~/.ssh/config → utilities/dotfiles/ssh_config\n"
-    else
-        printf "    ~/.%s → utilities/dotfiles/%s\n" "$_base" "$_base"
-    fi
-done
-printf "\n"
-printf "  \033[1mGit hooks:\033[0m       Installed from %s/\n" "$GITHOOKS_DIR"
-printf "    pre-push → submodule hygiene check\n"
-printf "\n"
-printf "  \033[1mSites detected:\033[0m\n"
+printf "  \033[1mSites:\033[0m\n"
 
 _any_sites=false
 for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
     _name="$(basename "$_dir")"
     _domain="$(resolve_domain "$_name")" || true
+    _exec_name="$(get_exec_name "$_dir")" || true
     if [ -d "$_dir/.output" ]; then
         if [ -n "$_domain" ]; then
-            printf "    http://%s/  (static, VirtualHost)\n" "$_domain"
+            printf "    ✓ %s → static (http://%s/)\n" "$_name" "$_domain"
         else
-            printf "    http://localhost/%s/  (static, path-based)\n" "$_name"
+            printf "    ✓ %s → static (http://localhost/%s/)\n" "$_name" "$_name"
         fi
         _any_sites=true
-    elif [ -f "$_dir/.build/release/Application" ]; then
+    elif [ -n "$_exec_name" ] && [ -f "$_dir/.build/release/$_exec_name" ]; then
+        _port="$(db_get_port_if_exists "$_name")"
         if [ -n "$_domain" ]; then
-            printf "    http://%s/  (server → proxy, VirtualHost)\n" "$_domain"
+            printf "    ✓ %s → server :%s (http://%s/)\n" "$_name" "${_port:-?}" "$_domain"
         else
-            printf "    http://localhost/%s/  (server → proxy, path-based)\n" "$_name"
+            printf "    ✓ %s → server :%s (http://localhost/%s/)\n" "$_name" "${_port:-?}" "$_name"
         fi
         _any_sites=true
     else
-        printf "    %s  (not yet built)\n" "$_name"
+        printf "    ✗ %s (not yet built)\n" "$_name"
         _any_sites=true
     fi
 done
@@ -797,7 +823,7 @@ if [ "$_any_sites" = false ]; then
 fi
 
 printf "\n"
-printf "  \033[1mTooling detected:\033[0m\n"
+printf "  \033[1mTooling:\033[0m\n"
 _any_tooling=false
 for _dir in "$TOOLING_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
@@ -809,78 +835,27 @@ if [ "$_any_tooling" = false ]; then
     printf "    (none — add submodules under tooling/)\n"
 fi
 
-printf "\n"
-printf "  \033[1mLaunchd agents:\033[0m\n"
-printf "    com.mac9sb.server-manager  — supervises all server binaries\n"
-printf "    com.mac9sb.sites-watcher   — auto-detects new projects\n"
-printf "    com.mac9sb.backup          — daily SQLite backup to R2 at 03:00\n"
-if [ -f "$HOME/.cloudflared/maclong.json" ]; then
-printf "    com.mac9sb.cloudflared     — Cloudflare tunnel (maclong)\n"
-fi
-printf "\n"
-printf "  \033[1mLog rotation:\033[0m    newsyslog at /etc/newsyslog.d/com.mac9sb.conf\n"
-printf "    Application logs: 5 × 1MB, bzip2 compressed\n"
-printf "    Apache site logs: 5 × 1MB, bzip2 compressed\n"
-printf "\n"
-printf "  \033[1mPaths:\033[0m\n"
-printf "    Apache logs:     %s/<site>-{error,access}.log\n" "$APACHE_LOG_DIR"
-printf "    Server logs:     %s/<site>.{log,error.log}\n" "$LOG_DIR"
-printf "    Apache config:   %s\n" "$CUSTOM_CONF"
-printf "    HTTPD config:    %s\n" "$HTTPD_CONF"
-printf "    Launchd agents:  %s/\n" "$LAUNCH_AGENTS_DIR"
-printf "    State DB:        %s/state.db\n" "$STATE_DIR"
-printf "    Backups:         %s/backups/\n" "$STATE_DIR"
-printf "    Templates:       %s/\n" "$UTILITIES_DIR"
-printf "\n"
-printf "  \033[1mArchitecture:\033[0m\n"
-printf "    Cloudflare Tunnel → Apache :80 → routes by domain/subdomain\n"
-printf "    sites/maclong.dev/ (dot in name) → VirtualHost maclong.dev\n"
-printf "    sites/api-thing/  (no dot)       → VirtualHost api-thing.%s\n" "$PRIMARY_DOMAIN"
-printf "    All sites also accessible at localhost/site-name/ (dev)\n"
-printf "    Static sites served directly from .output directories\n"
-printf "    Server binaries reverse-proxied via mod_proxy\n"
-printf "    WebSocket upgrades: handled via mod_proxy_wstunnel + mod_rewrite\n"
-printf "    HTTPS terminated at Cloudflare edge, local traffic is HTTP\n"
-printf "\n"
-printf "  \033[1mCloudflare Tunnel:\033[0m  maclong\n"
-printf "    Config:      %s/config.yml (in-repo, symlinked)\n" "$CLOUDFLARED_DIR"
-if [ -f "$HOME/.cloudflared/maclong.json" ]; then
-printf "    Credentials: ~/.cloudflared/maclong.json (off-repo)\n"
-else
-printf "    Credentials: not yet created\n"
-printf "    Run: cloudflared tunnel login\n"
-printf "         cloudflared tunnel create maclong --credentials-file ~/.cloudflared/maclong.json\n"
-fi
-printf "\n"
-printf "  \033[1mSubmodules:\033[0m\n"
-printf "    Repos are managed as git submodules — no config arrays needed.\n"
-printf "    To add a new site:\n"
-printf "      cd %s\n" "$DEV_DIR"
-printf "      git submodule add https://github.com/%s/<repo>.git sites/<repo>\n" "$GITHUB_USER"
-printf "    The sites-watcher will auto-detect and configure it.\n"
-printf "\n"
-printf "    To update submodules correctly:\n"
-printf "      git submodule update --remote --merge\n"
-printf "      git add sites/<name> && git commit\n"
-printf "    Do NOT use 'git -C sites/<name> pull' — the pre-push hook will block it.\n"
-printf "\n"
-printf "  \033[1mNext steps:\033[0m\n"
-_step=1
+# --- Action items (only print sections that need attention) ---
+_has_actions=false
+
 if [ ! -f "$HOME/.cloudflared/maclong.json" ]; then
-printf "    %d. Set up Cloudflare tunnel (see above)\n" "$_step"
-_step=$((_step + 1))
+    if [ "$_has_actions" = false ]; then
+        printf "\n"
+        printf "  \033[1mAction required:\033[0m\n"
+        _has_actions=true
+    fi
+    printf "    • Set up Cloudflare tunnel:\n"
+    printf "        cloudflared tunnel login\n"
+    printf "        cloudflared tunnel create maclong --credentials-file ~/.cloudflared/maclong.json\n"
 fi
+
 if [ ! -f "$_r2_creds" ]; then
-printf "    %d. Create %s for daily backup uploads\n" "$_step" "$_r2_creds"
-_step=$((_step + 1))
+    if [ "$_has_actions" = false ]; then
+        printf "\n"
+        printf "  \033[1mAction required:\033[0m\n"
+        _has_actions=true
+    fi
+    printf "    • Create %s for daily R2 backups\n" "$_r2_creds"
 fi
-printf "    %d. Name site dirs as domains or subdomains (see README)\n" "$_step"
-printf "\n"
-printf "  \033[1mUseful commands:\033[0m\n"
-printf "    sudo apachectl configtest && sudo apachectl restart\n"
-printf "    launchctl list | grep %s\n" "$GITHUB_USER"
-printf "    ~/Developer/utilities/scripts/restart-server.sh <server-name>\n"
-printf "    tail -f %s/<site>.log\n" "$LOG_DIR"
-printf "    git submodule status\n"
-printf "    git submodule update --remote --merge\n"
+
 printf "\n"

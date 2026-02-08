@@ -330,6 +330,23 @@ db_import_port_assignments() {
     done < "$_file"
 }
 
+# ── Package.swift helpers ────────────────────────────────────────────────────
+
+# Get the executable target name from a project's Package.swift.
+# Parses the first .executableTarget(name: "...") declaration.
+# Returns the name on stdout, or returns 1 if no executable target is found.
+# Usage: _exec="$(get_exec_name "/path/to/project")"
+get_exec_name() {
+    _pkg="$1/Package.swift"
+    [ ! -f "$_pkg" ] && return 1
+    _exec="$(tr '\n' ' ' < "$_pkg" | grep -o '\.executableTarget( *name: *"[^"]*"' | head -1 | sed 's/.*name: *"\([^"]*\)".*/\1/')"
+    if [ -n "$_exec" ]; then
+        printf '%s' "$_exec"
+        return 0
+    fi
+    return 1
+}
+
 # Import sites state from the legacy flat file.
 # Reads lines like "repo:type" and inserts them into the sites table.
 # Usage: db_import_sites_state "/path/to/sites-state"

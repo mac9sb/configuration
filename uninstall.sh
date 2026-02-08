@@ -23,6 +23,7 @@ GITHUB_USER="mac9sb"
 DEV_DIR="$HOME/Developer"
 SITES_DIR="$DEV_DIR/sites"
 UTILITIES_DIR="$DEV_DIR/utilities"
+SCRIPTS_DIR="$UTILITIES_DIR/scripts"
 DOTFILES_DIR="$UTILITIES_DIR/dotfiles"
 STATE_DIR="$HOME/Library/Application Support/com.mac9sb"
 APP_LOG_DIR="$HOME/Library/Logs/com.mac9sb"
@@ -30,6 +31,9 @@ LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 HTTPD_CONF="/etc/apache2/httpd.conf"
 CUSTOM_CONF="/etc/apache2/extra/custom.conf"
 APACHE_LOG_DIR="/var/log/apache2/sites"
+
+# Source shared helpers for get_exec_name()
+. "$SCRIPTS_DIR/db.sh"
 
 UID_NUM="$(id -u)"
 REMOVE_TOOLS=false
@@ -320,8 +324,10 @@ info "Step 7/8: Cleaning up rollback binaries"
 _cleaned_binaries=0
 for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
+    _exec_name="$(get_exec_name "$_dir")" || true
+    [ -z "$_exec_name" ] && continue
     for _suffix in .run .bak .last-good; do
-        _file="$_dir/.build/release/Application${_suffix}"
+        _file="$_dir/.build/release/${_exec_name}${_suffix}"
         if [ -f "$_file" ]; then
             rm -f "$_file"
             _cleaned_binaries=$((_cleaned_binaries + 1))

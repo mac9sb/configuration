@@ -3,8 +3,8 @@
 #  Sites Watcher — Auto-configures Apache for ~/Developer/sites
 #
 #  Scans ~/Developer/sites for project directories. When a project has:
-#    - .output/                    → configured as a static site
-#    - .build/release/Application  → configured as a server (reverse proxy)
+#    - .output/                        → configured as a static site
+#    - .build/release/<exec>           → configured as a server (reverse proxy)
 #
 #  Domain routing (derived from directory names + primary domain):
 #    The primary domain is parsed from the cloudflared config comment:
@@ -145,10 +145,13 @@ for dir in "$SITES_DIR"/*/; do
         current_state="${current_state}${repo}:static
 "
         _discovered_names="${_discovered_names} ${repo}"
-    elif [ -f "$dir/.build/release/Application" ]; then
-        current_state="${current_state}${repo}:server
+    else
+        _exec_name="$(get_exec_name "$dir")" || true
+        if [ -n "$_exec_name" ] && [ -f "$dir/.build/release/$_exec_name" ]; then
+            current_state="${current_state}${repo}:server
 "
-        _discovered_names="${_discovered_names} ${repo}"
+            _discovered_names="${_discovered_names} ${repo}"
+        fi
     fi
 done
 
