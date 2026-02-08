@@ -65,8 +65,9 @@ UID_NUM="$(id -u)"
 
 # Initialise the state database early so db_* helpers are available
 mkdir -p "$STATE_DIR" "$LOG_DIR"
-chown -R "${SUDO_USER:-$(logname)}:staff" "$LOG_DIR"
+chown -R "${SUDO_USER:-$(logname)}:staff" "$STATE_DIR" "$LOG_DIR"
 db_init
+chown -R "${SUDO_USER:-$(logname)}:staff" "$STATE_DIR"
 
 # =============================================================================
 #  Utility Functions
