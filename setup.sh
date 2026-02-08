@@ -278,7 +278,13 @@ fi
 info "Step 6/${TOTAL_STEPS}: Installing Zed"
 
 ZED_APP="/Applications/Zed.app"
-ZED_DMG_URL="https://zed.dev/download-success?asset=Zed-aarch64.dmg&version=0.222.4&channel=stable" # direct stable arm64 DMG
+ZED_DMG_VERSION="${ZED_DMG_VERSION:-0.222.4}"
+case "$(uname -m)" in
+    arm64|aarch64) ZED_ASSET="Zed-aarch64.dmg" ;;
+    x86_64|amd64) ZED_ASSET="Zed-x86_64.dmg" ;;
+    *) ZED_ASSET="Zed-aarch64.dmg"; warn "Unknown architecture $(uname -m) — defaulting to arm64 DMG" ;;
+esac
+ZED_DMG_URL="https://zed.dev/download-success?asset=${ZED_ASSET}&version=${ZED_DMG_VERSION}&channel=stable" # direct stable DMG
 
 if [ -d "$ZED_APP" ]; then
     success "Zed already installed"
