@@ -284,20 +284,29 @@ if [ -d "$ZED_APP" ]; then
     success "Zed already installed"
 else
     TMPDIR_ZED="$(mktemp -d)"
+    _zed_cleanup() {
+        [ -d "$TMPDIR_ZED" ] && rm -rf "$TMPDIR_ZED"
+    }
+    trap '_zed_cleanup' EXIT
     _zed_dmg="$TMPDIR_ZED/zed.dmg"
     _zed_mount="$TMPDIR_ZED/mount"
+    _zed_verify_log="$TMPDIR_ZED/zed-verify.log"
 
     info "Downloading Zed..."
-    if curl -sL --fail --max-time 60 "$ZED_DMG_URL" -o "$_zed_dmg"; then
+    if [ "${ZED_DMG_URL#https://}" = "$ZED_DMG_URL" ]; then
+        warn "Zed download URL is not HTTPS — install manually later"
+    elif curl -sL --fail --max-time 60 "$ZED_DMG_URL" -o "$_zed_dmg"; then
         mkdir -p "$_zed_mount"
         if hdiutil attach "$_zed_dmg" -nobrowse -quiet -mountpoint "$_zed_mount"; then
             if [ -d "$_zed_mount/Zed.app" ]; then
-                if codesign --verify --deep --strict --verbose=2 "$_zed_mount/Zed.app" >/dev/null 2>&1 && \
-                   spctl --assess --type execute "$_zed_mount/Zed.app" >/dev/null 2>&1; then
+                : > "$_zed_verify_log"
+                if codesign --verify --deep --strict --verbose=2 "$_zed_mount/Zed.app" >"$_zed_verify_log" 2>&1 && \
+                   spctl --assess --type execute "$_zed_mount/Zed.app" >>"$_zed_verify_log" 2>&1; then
                     sudo ditto "$_zed_mount/Zed.app" "$ZED_APP"
                     success "Zed installed to $ZED_APP"
                 else
                     warn "Zed signature verification failed — install manually later"
+                    cat "$_zed_verify_log"
                 fi
             else
                 warn "Zed app not found in DMG — install manually later"
@@ -310,9 +319,8 @@ else
         warn "Failed to download Zed — install manually later"
     fi
 
-    if [ -d "$TMPDIR_ZED" ]; then
-        rm -rf "$TMPDIR_ZED"
-    fi
+    _zed_cleanup
+    trap - EXIT
 fi
 
 # =============================================================================
