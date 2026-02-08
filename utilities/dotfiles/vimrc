@@ -1,0 +1,3 @@
+syntax enable
+set nu rnu ar nowrap is hls wmnu path+=** sw=2 ts=2 scl=no wim=longest:full,full wildignore+=*.o,*.obj,.git,*.pyc,*.swp,DS_Store.git,.build
+autocmd FileType markdown setlocal wrap

@@ -1,0 +1,5 @@
+[user]
+	name = Mac
+	email = maclong9@icloud.com
+[core]
+	excludesfile = ~/.gitignore

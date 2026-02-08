@@ -1,0 +1,16 @@
+# --- {{SITE_NAME}} (static, served from .output) ---
+Alias /{{SITE_NAME}} "{{OUTPUT_DIR}}"
+<Directory "{{OUTPUT_DIR}}">
+    Options Indexes FollowSymLinks MultiViews
+    AllowOverride All
+    Require all granted
+
+    RewriteEngine On
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^(.+[^/])$ /{{SITE_NAME}}/$1/ [R=301,L]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule . /{{SITE_NAME}}/index.html [L]
+</Directory>
+ErrorLog  "{{LOG_DIR}}/{{SITE_NAME}}-error.log"
+CustomLog "{{LOG_DIR}}/{{SITE_NAME}}-access.log" combined

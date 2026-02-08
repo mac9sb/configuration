@@ -1,0 +1,8 @@
+# --- {{SITE_NAME}} (server binary, reverse proxy to :{{PORT}}) ---
+<Location /{{SITE_NAME}}/>
+    ProxyPass        http://127.0.0.1:{{PORT}}/
+    ProxyPassReverse http://127.0.0.1:{{PORT}}/
+    Require all granted
+</Location>
+ErrorLog  "{{LOG_DIR}}/{{SITE_NAME}}-error.log"
+CustomLog "{{LOG_DIR}}/{{SITE_NAME}}-access.log" combined
