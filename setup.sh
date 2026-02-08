@@ -282,7 +282,7 @@ ZED_DMG_VERSION="${ZED_DMG_VERSION:-0.222.4}"
 case "$(uname -m)" in
     arm64|aarch64) ZED_ASSET="Zed-aarch64.dmg" ;;
     x86_64|amd64) ZED_ASSET="Zed-x86_64.dmg" ;;
-    *) ZED_ASSET=""; warn "Unknown architecture $(uname -m) — skipping Zed install" ;;
+    *) ZED_ASSET="" ;;
 esac
 ZED_DMG_URL="https://zed.dev/download-success?asset=${ZED_ASSET}&version=${ZED_DMG_VERSION}&channel=stable" # direct stable DMG
 
