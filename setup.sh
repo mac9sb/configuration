@@ -282,12 +282,14 @@ ZED_DMG_VERSION="${ZED_DMG_VERSION:-0.222.4}"
 case "$(uname -m)" in
     arm64|aarch64) ZED_ASSET="Zed-aarch64.dmg" ;;
     x86_64|amd64) ZED_ASSET="Zed-x86_64.dmg" ;;
-    *) ZED_ASSET="Zed-aarch64.dmg"; warn "Unknown architecture $(uname -m) — defaulting to arm64 DMG" ;;
+    *) ZED_ASSET=""; warn "Unknown architecture $(uname -m) — skipping Zed install" ;;
 esac
 ZED_DMG_URL="https://zed.dev/download-success?asset=${ZED_ASSET}&version=${ZED_DMG_VERSION}&channel=stable" # direct stable DMG
 
 if [ -d "$ZED_APP" ]; then
     success "Zed already installed"
+elif [ -z "$ZED_ASSET" ]; then
+    warn "Unsupported architecture for Zed DMG — install manually later"
 else
     TMPDIR_ZED="$(mktemp -d)"
     _zed_cleanup() {
