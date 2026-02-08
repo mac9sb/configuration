@@ -206,7 +206,7 @@ printf '%s' "$current_state" | while IFS=: read -r repo type; do
     case "$type" in
         static)
             _output="$_dir/.output"
-            render_template "$APACHE_TMPL_DIR/static-site.conf.tmpl" \
+            render_template "$APACHE_TMPL_DIR/static-site.conf.template" \
                 "SITE_NAME=$repo" \
                 "OUTPUT_DIR=$_output" \
                 "LOG_DIR=$APACHE_LOG_DIR" \
@@ -215,7 +215,7 @@ printf '%s' "$current_state" | while IFS=: read -r repo type; do
             ;;
         server)
             _port="$(db_get_port "$repo")"
-            render_template "$APACHE_TMPL_DIR/server-site.conf.tmpl" \
+            render_template "$APACHE_TMPL_DIR/server-site.conf.template" \
                 "SITE_NAME=$repo" \
                 "PORT=$_port" \
                 "LOG_DIR=$APACHE_LOG_DIR" \
@@ -235,7 +235,7 @@ printf '%s' "$current_state" | while IFS=: read -r repo type; do
     case "$type" in
         static)
             _output="$_dir/.output"
-            render_template "$APACHE_TMPL_DIR/static-vhost.conf.tmpl" \
+            render_template "$APACHE_TMPL_DIR/static-vhost.conf.template" \
                 "SITE_NAME=$repo" \
                 "DOMAIN=$_domain" \
                 "OUTPUT_DIR=$_output" \
@@ -246,7 +246,7 @@ printf '%s' "$current_state" | while IFS=: read -r repo type; do
             ;;
         server)
             _port="$(db_get_port "$repo")"
-            render_template "$APACHE_TMPL_DIR/server-vhost.conf.tmpl" \
+            render_template "$APACHE_TMPL_DIR/server-vhost.conf.template" \
                 "SITE_NAME=$repo" \
                 "DOMAIN=$_domain" \
                 "PORT=$_port" \
