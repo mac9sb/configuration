@@ -299,12 +299,13 @@ else
             if _zed_effective_url="$(curl --proto '=https' --proto-redir '=https' --tlsv1.2 --progress-bar -L --fail --show-error --max-time 60 "$ZED_DMG_URL" -o "$_zed_dmg" -w '%{url_effective}')"; then
                 info "Downloaded Zed DMG from ${_zed_effective_url:-$ZED_DMG_URL}"
                 mkdir -p "$_zed_mount"
+                # hdiutil verify checks DMG integrity, not signature authenticity.
                 if hdiutil verify "$_zed_dmg" >"$_zed_dmg_verify_log" 2>&1; then
                     if hdiutil attach "$_zed_dmg" -nobrowse -quiet -mountpoint "$_zed_mount"; then
                         if [ -d "$_zed_mount/Zed.app" ]; then
                             _codesign_ok=true
                             _spctl_ok=true
-                            : > "$_zed_verify_log"
+                            : > "$_zed_verify_log" # truncate log before appending
                             if ! codesign --verify --deep --strict --verbose=2 "$_zed_mount/Zed.app" >>"$_zed_verify_log" 2>&1; then
                                 _codesign_ok=false
                             fi
@@ -325,8 +326,10 @@ else
                                     warn "Zed Gatekeeper assessment failed"
                                 fi
                                 warn "Zed signature verification failed — install manually later"
-                                printf "  Verification output:\n"
-                                sed 's/^/  /' "$_zed_verify_log"
+                                if [ -s "$_zed_verify_log" ]; then
+                                    printf "  Verification output:\n"
+                                    sed 's/^/  /' "$_zed_verify_log"
+                                fi
                             fi
                         else
                             warn "Zed app not found in DMG — install manually later"
@@ -337,8 +340,10 @@ else
                     fi
                 else
                     warn "Downloaded Zed DMG failed verification — install manually later"
-                    printf "  Verification output:\n"
-                    sed 's/^/  /' "$_zed_dmg_verify_log"
+                    if [ -s "$_zed_dmg_verify_log" ]; then
+                        printf "  Verification output:\n"
+                        sed 's/^/  /' "$_zed_dmg_verify_log"
+                    fi
                 fi
             else
                 warn "Failed to download Zed — install manually later"
