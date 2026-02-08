@@ -291,7 +291,7 @@ fi
 if [ -d "$ZED_APP" ]; then
     success "Zed already installed"
 elif [ -z "$ZED_ASSET" ]; then
-    warn "Unsupported architecture for Zed DMG — install manually later"
+    warn "Unsupported architecture for Zed DMG -- install manually later"
 else
     TMPDIR_ZED="$(mktemp -d)"
     _zed_cleanup() {
