@@ -55,7 +55,7 @@ Internet → Cloudflare Tunnel (maclong) → Apache :80 → VirtualHost routing
 
 ## Submodules
 
-Submodules are the source of truth for what repos exist and for Apache/server-manager config. Adding or removing a submodule is all you need to do for primary + subdomain sites — custom domains still require a cloudflared ingress + DNS entry (see below).
+Submodules are the source of truth for what repos exist, Apache/server-manager config, and cloudflared ingress entries. Adding or removing a submodule is all you need to do for routing — custom domains still require a DNS route to the tunnel (see below).
 
 ### Adding
 
@@ -92,7 +92,7 @@ git commit -m "Update <name> submodule"
 
 ## Domain Routing
 
-Apache routing is derived entirely from site directory names and the primary domain configured in `utilities/cloudflared/config.yml` (cloudflared ingress entries are still required for custom domains):
+Apache routing is derived entirely from site directory names and the primary domain configured in `utilities/cloudflared/config.yml` (custom domain ingress entries are auto-managed by sites-watcher):
 
 ```
 # primary-domain: maclong.dev
@@ -118,7 +118,7 @@ git commit -m "Add api submodule"
 
 ### Adding a Custom Domain Site
 
-Custom domains need an ingress entry in the cloudflared config and a DNS route:
+Custom domains need a DNS route to the tunnel; the cloudflared ingress entry is auto-managed:
 
 1. Add the submodule (directory name = the domain):
 
@@ -126,15 +126,7 @@ Custom domains need an ingress entry in the cloudflared config and a DNS route:
    git submodule add https://github.com/mac9sb/cool-app.git sites/cool-app.com
    ```
 
-2. Add an ingress entry in `utilities/cloudflared/config.yml`:
-
-   ```yaml
-   ingress:
-     # ... existing entries ...
-     - hostname: cool-app.com
-       service: http://localhost:80
-     # ... catch-all must remain last ...
-   ```
+2. The sites-watcher updates `utilities/cloudflared/config.yml` automatically (no manual edits needed).
 
 3. Route DNS to the tunnel:
 
@@ -142,7 +134,7 @@ Custom domains need an ingress entry in the cloudflared config and a DNS route:
    cloudflared tunnel route dns maclong cool-app.com
    ```
 
-4. The sites-watcher picks up the change and regenerates Apache config automatically.
+4. The sites-watcher picks up the change, regenerating Apache config and ingress entries automatically.
 
 ### Renaming / Changing Domains
 
