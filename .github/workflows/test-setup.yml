@@ -335,11 +335,11 @@ jobs:
       - name: Verify passwordless sudo for apachectl
         run: |
           SUDOERS="/etc/sudoers.d/mac9sb"
-          if [ ! -f "$SUDOERS" ]; then
+          if ! sudo test -f "$SUDOERS"; then
             echo "FAIL: $SUDOERS not found"
             exit 1
           fi
-          if grep -q "apachectl" "$SUDOERS"; then
+          if sudo grep -q "apachectl" "$SUDOERS"; then
             echo "OK: passwordless sudo for apachectl configured"
           else
             echo "FAIL: apachectl not in $SUDOERS"
@@ -674,16 +674,23 @@ jobs:
 
           OLD_PID="$(sqlite3 "$DB" "SELECT pid FROM servers WHERE name = 'test-server';")"
           echo "Killing test-server (PID $OLD_PID) to simulate crash"
-          kill "$OLD_PID" 2>/dev/null || true
+          # Kill the entire process group so child python3 is also terminated,
+          # otherwise the port stays bound and the restarted server crashes.
+          kill -- -"$(ps -o pgid= -p "$OLD_PID" | tr -d ' ')" 2>/dev/null || kill "$OLD_PID" 2>/dev/null || true
 
           # Wait for manager to detect and restart (poll interval starts at 5s)
-          sleep 12
+          sleep 15
 
           NEW_PID="$(sqlite3 "$DB" "SELECT pid FROM servers WHERE name = 'test-server';")"
           if [ -n "$NEW_PID" ] && [ "$NEW_PID" != "$OLD_PID" ] && kill -0 "$NEW_PID" 2>/dev/null; then
             echo "OK: test-server restarted with new PID $NEW_PID (was $OLD_PID)"
           else
             echo "FAIL: test-server not restarted (old=$OLD_PID new=$NEW_PID)"
+            # Debug info
+            echo "--- server-manager log ---"
+            tail -20 "$HOME/Library/Logs/com.mac9sb/server-manager.log" 2>/dev/null || true
+            echo "--- test-server error log ---"
+            tail -20 "$HOME/Library/Logs/com.mac9sb/test-server.error.log" 2>/dev/null || true
             exit 1
           fi
 
