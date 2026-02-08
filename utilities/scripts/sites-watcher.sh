@@ -136,8 +136,9 @@ sync_cloudflared_ingress() {
     fi
 
     _primary_domain="${PRIMARY_DOMAIN:-}"
+    # Directory names with dots represent custom domains; subdomains never include dots.
     _custom_domains="$(printf '%s' "$current_state" | awk -F: -v primary="$_primary_domain" 'NF { if ($1 ~ /\./ && (primary == "" || $1 != primary)) print $1 }' | sort -u)"
-    _block_file="$(mktemp -t cloudflared.ingress)"
+    _block_file="$(mktemp "${TMPDIR:-/tmp}/cloudflared.ingress.XXXXXX")"
     if [ -n "$_custom_domains" ]; then
         for _domain in $_custom_domains; do
             printf '  - hostname: %s\n    service: http://localhost:80\n' "$_domain" >> "$_block_file"
@@ -146,7 +147,7 @@ sync_cloudflared_ingress() {
         printf '  # (none)\n' >> "$_block_file"
     fi
 
-    _tmp_config="$(mktemp -t cloudflared.config)"
+    _tmp_config="$(mktemp "${TMPDIR:-/tmp}/cloudflared.config.XXXXXX")"
     awk -v begin="$INGRESS_BEGIN" -v end="$INGRESS_END" -v block="$_block_file" '
         $0 ~ begin {
             print
