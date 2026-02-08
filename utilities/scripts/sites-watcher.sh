@@ -137,7 +137,7 @@ sync_cloudflared_ingress() {
 
     _primary_domain="${PRIMARY_DOMAIN:-}"
     # Directory names with dots represent custom domains; subdomains never include dots in this setup.
-    # Filter dot-named entries and skip the primary domain when it is configured.
+    # Filter criteria: (1) name contains a dot, (2) skip the primary domain when configured.
     _custom_domains="$(printf '%s' "$current_state" | awk -F: -v primary="$_primary_domain" 'NF { if ($1 ~ /\./ && (primary == "" || $1 != primary)) print $1 }' | sort -u)"
     _block_file="$(mktemp "${TMPDIR:-/tmp}/cloudflared.ingress.XXXXXX")"
     if [ -n "$_custom_domains" ]; then
@@ -150,13 +150,13 @@ sync_cloudflared_ingress() {
 
     _tmp_config="$(mktemp "${TMPDIR:-/tmp}/cloudflared.config.XXXXXX")"
     # Replace the contents between ingress markers with the generated block.
-    awk -v begin="$INGRESS_BEGIN" -v end="$INGRESS_END" -v block="$_block_file" '
+    awk -v begin="$INGRESS_BEGIN" -v end="$INGRESS_END" -v block_file="$_block_file" '
         $0 ~ begin {
             print
-            while ((getline block_line < block) > 0) {
+            while ((getline block_line < block_file) > 0) {
                 print block_line
             }
-            close(block)
+            close(block_file)
             in_block=1
             next
         }
