@@ -673,10 +673,16 @@ jobs:
           DB="$HOME/Library/Application Support/com.mac9sb/state.db"
 
           OLD_PID="$(sqlite3 "$DB" "SELECT pid FROM servers WHERE name = 'test-server';")"
+          PORT="$(sqlite3 "$DB" "SELECT port FROM sites WHERE name = 'test-server';")"
           echo "Killing test-server (PID $OLD_PID) to simulate crash"
-          # Kill the entire process group so child python3 is also terminated,
-          # otherwise the port stays bound and the restarted server crashes.
-          kill -- -"$(ps -o pgid= -p "$OLD_PID" | tr -d ' ')" 2>/dev/null || kill "$OLD_PID" 2>/dev/null || true
+          # Kill the server process and any children (e.g. python3 holding the port)
+          for child in $(ps -o pid= -p "$OLD_PID" 2>/dev/null; ps -ax -o pid=,ppid= | awk -v p="$OLD_PID" '$2==p {print $1}'); do
+            kill "$child" 2>/dev/null || true
+          done
+          kill "$OLD_PID" 2>/dev/null || true
+          # Also kill anything still holding the port
+          sleep 1
+          lsof -ti :"$PORT" 2>/dev/null | while read pid; do kill "$pid" 2>/dev/null || true; done
 
           # Wait for manager to detect and restart (poll interval starts at 5s)
           sleep 15
