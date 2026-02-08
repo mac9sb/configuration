@@ -10,7 +10,7 @@ set -e
 #    - Dotfiles (symlinked from utilities/dotfiles)
 #    - SSH key generation
 #    - Xcode CLI tools & Swift
-#    - CLI tooling (cloudflared)
+#    - CLI tooling (cloudflared, gh, copilot)
 #    - Git submodule initialization & hook installation
 #    - Building Swift projects (with rollback preservation)
 #    - Apache with mod_proxy/mod_rewrite/mod_headers + per-site config
@@ -62,7 +62,7 @@ CLASSIFY_TIMEOUT=15
 . "$SCRIPTS_DIR/db.sh"
 
 UID_NUM="$(id -u)"
-TOTAL_STEPS=14
+TOTAL_STEPS=16
 
 # Initialise the state database early so db_* helpers are available
 mkdir -p "$STATE_DIR" "$LOG_DIR"
@@ -270,12 +270,55 @@ else
     success "cloudflared already installed: $(cloudflared --version 2>&1 | head -1)"
 fi
 
+# =============================================================================
+#  Step 6 — Install GitHub CLI (gh)
+# =============================================================================
+
+info "Step 6/${TOTAL_STEPS}: Installing GitHub CLI (gh)"
+if ! command_exists gh; then
+    info "Installing gh via Homebrew..."
+    if command_exists brew; then
+        if brew install gh >/dev/null 2>&1; then
+            if command_exists gh; then
+                success "gh installed: $(gh --version 2>&1 | head -1)"
+            else
+                warn "gh installed but not found on PATH"
+            fi
+        else
+            warn "gh installation via brew failed — install manually later"
+        fi
+    else
+        warn "Homebrew not found — install gh manually later"
+    fi
+else
+    success "gh already installed: $(gh --version 2>&1 | head -1)"
+fi
 
 # =============================================================================
-#  Step 6 — Initialize git submodules & install hooks
+#  Step 7 — Install GitHub Copilot CLI
 # =============================================================================
 
-info "Step 6/${TOTAL_STEPS}: Initializing git submodules & installing hooks"
+info "Step 7/${TOTAL_STEPS}: Installing GitHub Copilot CLI"
+if ! command_exists github-copilot-cli; then
+    info "Installing GitHub Copilot CLI..."
+    if command_exists gh; then
+        if gh extension install github/gh-copilot >/dev/null 2>&1; then
+            success "GitHub Copilot CLI installed"
+        else
+            warn "Copilot CLI installation failed — install manually: gh extension install github/gh-copilot"
+        fi
+    else
+        warn "gh CLI not available — install gh first to enable Copilot CLI"
+    fi
+else
+    success "GitHub Copilot CLI already installed"
+fi
+
+# =============================================================================
+#  Step 8 — Initialize git submodules & install hooks
+# =============================================================================
+
+info "Step 8/${TOTAL_STEPS}: Initializing git submodules & installing hooks"
 mkdir -p "$SITES_DIR" "$TOOLING_DIR" "$STATE_DIR" "$LOG_DIR" "$LAUNCH_AGENTS_DIR"
 
 cd "$DEV_DIR"
@@ -311,7 +354,7 @@ fi
 #  Step 7 — Build Swift projects (with rollback preservation)
 # =============================================================================
 
-info "Step 7/${TOTAL_STEPS}: Building Swift projects"
+info "Step 9/${TOTAL_STEPS}: Building Swift projects"
 
 # Build any Swift package found under tooling/
 for _dir in "$TOOLING_DIR"/*/; do
@@ -401,7 +444,7 @@ done
 #  Step 8 — Configure Apache (with atomic reload)
 # =============================================================================
 
-info "Step 8/${TOTAL_STEPS}: Configuring Apache"
+info "Step 10/${TOTAL_STEPS}: Configuring Apache"
 
 enable_module() {
     _mod="$1"
@@ -654,7 +697,7 @@ rm -f "$_old_conf" 2>/dev/null
 #  Step 9 — Initialise SQLite state database & assign server ports
 # =============================================================================
 
-info "Step 9/${TOTAL_STEPS}: Initialising state database & assigning ports"
+info "Step 11/${TOTAL_STEPS}: Initialising state database & assigning ports"
 
 db_init
 
@@ -705,7 +748,7 @@ chmod +x "$SCRIPTS_DIR/backup.sh"         2>/dev/null || true
 #  Step 10 — Configure Cloudflare tunnel (in-repo config, credentials off-repo)
 # =============================================================================
 
-info "Step 10/${TOTAL_STEPS}: Configuring Cloudflare tunnel"
+info "Step 12/${TOTAL_STEPS}: Configuring Cloudflare tunnel"
 
 mkdir -p "$HOME/.cloudflared"
 
@@ -745,7 +788,7 @@ fi
 #  Step 11 — Install log rotation (newsyslog)
 # =============================================================================
 
-info "Step 11/${TOTAL_STEPS}: Installing log rotation config"
+info "Step 13/${TOTAL_STEPS}: Installing log rotation config"
 
 _newsyslog_src="$NEWSYSLOG_DIR/com.mac9sb.conf"
 _newsyslog_dest="/etc/newsyslog.d/com.mac9sb.conf"
@@ -763,7 +806,7 @@ fi
 #  Step 12 — Symlink launchd agents
 # =============================================================================
 
-info "Step 12/${TOTAL_STEPS}: Symlinking launchd agents"
+info "Step 14/${TOTAL_STEPS}: Symlinking launchd agents"
 
 # All plists are static files with literal paths — symlinked for easy management.
 # server-manager.plist  → supervises all server binaries (inferred from filesystem)
@@ -799,7 +842,7 @@ done
 #  Step 13 — Test & restart Apache
 # =============================================================================
 
-info "Step 13/${TOTAL_STEPS}: Testing and restarting Apache"
+info "Step 15/${TOTAL_STEPS}: Testing and restarting Apache"
 
 for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
@@ -822,7 +865,7 @@ fi
 #  Step 14 — R2 backup credentials check
 # =============================================================================
 
-info "Step 14/${TOTAL_STEPS}: Checking backup prerequisites"
+info "Step 16/${TOTAL_STEPS}: Checking backup prerequisites"
 
 _r2_creds="$DEV_DIR/.env.local"
 if [ -f "$_r2_creds" ]; then
