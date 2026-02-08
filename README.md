@@ -16,7 +16,6 @@ Personal macOS development environment — manages sites, tooling, and infrastru
 │   │   ├── gitignore
 │   │   └── ssh_config
 │   ├── apache/              # Apache config templates
-│   │   ├── custom.conf.header
 │   │   ├── static-site.conf.tmpl
 │   │   └── server-site.conf.tmpl
 │   ├── launchd/             # launchd plist templates

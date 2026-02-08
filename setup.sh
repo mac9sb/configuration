@@ -346,8 +346,7 @@ sudo chown root:wheel "$LOG_DIR"
 server_port=$SERVER_PORT_START
 
 _conf_file="$(mktemp)"
-cat "$APACHE_TMPL_DIR/custom.conf.header" > "$_conf_file"
-printf '\n' >> "$_conf_file"
+printf 'ProxyPreserveHost On\nProxyRequests Off\n\n' > "$_conf_file"
 
 for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue

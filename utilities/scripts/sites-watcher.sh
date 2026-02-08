@@ -137,8 +137,7 @@ get_port() {
 
 # Start with the header
 _conf_file="$(mktemp)"
-cat "$APACHE_TMPL_DIR/custom.conf.header" > "$_conf_file"
-printf '\n' >> "$_conf_file"
+printf 'ProxyPreserveHost On\nProxyRequests Off\n\n' > "$_conf_file"
 
 # Append per-site blocks
 printf '%s' "$current_state" | while IFS=: read -r repo type; do
