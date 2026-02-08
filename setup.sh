@@ -393,8 +393,11 @@ mkdir -p "$SITES_DIR" "$TOOLING_DIR" "$STATE_DIR" "$LOG_DIR" "$LAUNCH_AGENTS_DIR
 cd "$DEV_DIR"
 
 if [ -f "$DEV_DIR/.gitmodules" ]; then
-    git submodule update --init --recursive 2>/dev/null
-    success "All submodules initialized"
+    if git submodule update --init --recursive 2>/dev/null; then
+        success "All submodules initialized"
+    else
+        warn "Failed to initialize submodules — check connectivity/credentials"
+    fi
 
     # Report what was found
     git submodule foreach --quiet 'printf "  %s\n" "$sm_path"' | while read -r _path; do
