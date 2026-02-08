@@ -62,7 +62,7 @@ CLASSIFY_TIMEOUT=15
 . "$SCRIPTS_DIR/db.sh"
 
 UID_NUM="$(id -u)"
-TOTAL_STEPS=14
+TOTAL_STEPS=15
 
 # Initialise the state database early so db_* helpers are available
 mkdir -p "$STATE_DIR" "$LOG_DIR"
@@ -272,10 +272,122 @@ fi
 
 
 # =============================================================================
-#  Step 6 — Initialize git submodules & install hooks
+#  Step 6 — Install Zed
 # =============================================================================
 
-info "Step 6/${TOTAL_STEPS}: Initializing git submodules & installing hooks"
+info "Step 6/${TOTAL_STEPS}: Installing Zed"
+
+ZED_APP="/Applications/Zed.app"
+ZED_DMG_VERSION="${ZED_DMG_VERSION:-0.222.4}" # version like 0.222.4 from https://zed.dev/releases (bump here or override ZED_DMG_VERSION; pinned 2026-02-08)
+ZED_ASSET="Zed-aarch64.dmg" # Apple Silicon only
+ZED_SUPPORTED=true
+ZED_ARCH="$(uname -m)"
+if [ "$ZED_ARCH" != "arm64" ] && [ "$ZED_ARCH" != "aarch64" ]; then
+    ZED_SUPPORTED=false
+    warn "Zed install expects Apple Silicon (arm64) -- skipping on this machine"
+fi
+
+if [ -d "$ZED_APP" ]; then
+    success "Zed already installed"
+elif [ "$ZED_SUPPORTED" = "false" ]; then
+    warn "Skipping Zed install for unsupported architecture"
+else
+    TMPDIR_ZED="$(mktemp -d)"
+    ZED_DMG_URL="https://zed.dev/download-success?asset=${ZED_ASSET}&version=${ZED_DMG_VERSION}&channel=stable" # download-success endpoint serves the version+arch stable DMG
+    _zed_cleanup() {
+        [ -d "$TMPDIR_ZED" ] && rm -rf "$TMPDIR_ZED"
+    }
+    trap '_zed_cleanup' EXIT
+    _zed_dmg="$TMPDIR_ZED/zed.dmg"
+    _zed_mount="$TMPDIR_ZED/mount"
+    _zed_verify_log="$TMPDIR_ZED/zed-verify.log"
+    _zed_dmg_verify_log="$TMPDIR_ZED/zed-dmg-verify.log"
+
+    info "Downloading Zed..."
+    case "$ZED_DMG_URL" in
+        https://*)
+            if _zed_effective_url="$(curl \
+                --proto '=https' \
+                --proto-redir '=https' \
+                --tlsv1.2 \
+                --progress-bar \
+                -L \
+                --fail \
+                --show-error \
+                --max-time 60 \
+                "$ZED_DMG_URL" \
+                -o "$_zed_dmg" \
+                -w '%{url_effective}')"; then
+                info "Downloaded Zed DMG from ${_zed_effective_url:-$ZED_DMG_URL}"
+                if [ ! -s "$_zed_dmg" ]; then
+                    warn "Downloaded Zed DMG is empty - install manually later"
+                else
+                    mkdir -p "$_zed_mount"
+                    # hdiutil verify checks DMG integrity, not signature authenticity.
+                    if hdiutil verify "$_zed_dmg" >"$_zed_dmg_verify_log" 2>&1; then
+                        if hdiutil attach "$_zed_dmg" -nobrowse -quiet -mountpoint "$_zed_mount"; then
+                            if [ -d "$_zed_mount/Zed.app" ]; then
+                                _codesign_ok=true
+                            _spctl_ok=true
+                            > "$_zed_verify_log" # truncate log before appending
+                            if ! codesign --verify --deep --strict --verbose=2 "$_zed_mount/Zed.app" >>"$_zed_verify_log" 2>&1; then
+                                _codesign_ok=false
+                            fi
+                            if ! spctl --assess --type execute "$_zed_mount/Zed.app" >>"$_zed_verify_log" 2>&1; then
+                                _spctl_ok=false
+                            fi
+                            if [ "$_codesign_ok" = true ] && [ "$_spctl_ok" = true ]; then
+                                if sudo ditto "$_zed_mount/Zed.app" "$ZED_APP"; then
+                                    success "Zed installed to $ZED_APP"
+                                else
+                                    warn "Failed to install Zed (sudo may have failed) — install manually later"
+                                fi
+                            else
+                                if [ "$_codesign_ok" != true ]; then
+                                    warn "Zed codesign verification failed"
+                                fi
+                                if [ "$_spctl_ok" != true ]; then
+                                    warn "Zed Gatekeeper assessment failed"
+                                fi
+                                warn "Zed signature verification failed — install manually later"
+                                if [ -s "$_zed_verify_log" ]; then
+                                    warn "Verification output:"
+                                    sed 's/^/  /' "$_zed_verify_log"
+                                fi
+                            fi
+                        else
+                            warn "Zed app not found in DMG — install manually later"
+                        fi
+                        hdiutil detach "$_zed_mount" -quiet || true
+                    else
+                        warn "Failed to mount Zed DMG — install manually later"
+                    fi
+                    else
+                        warn "Downloaded Zed DMG failed verification — install manually later"
+                        if [ -s "$_zed_dmg_verify_log" ]; then
+                            warn "Verification output:"
+                            sed 's/^/  /' "$_zed_dmg_verify_log"
+                        fi
+                    fi
+                fi
+            else
+                warn "Failed to download Zed — install manually later"
+            fi
+            ;;
+        *)
+            warn "Zed download URL is not HTTPS — install manually later"
+            ;;
+    esac
+
+    trap - EXIT
+    _zed_cleanup
+fi
+
+# =============================================================================
+#  Step 7 — Initialize git submodules & install hooks
+# =============================================================================
+
+info "Step 7/${TOTAL_STEPS}: Initializing git submodules & installing hooks"
 mkdir -p "$SITES_DIR" "$TOOLING_DIR" "$STATE_DIR" "$LOG_DIR" "$LAUNCH_AGENTS_DIR"
 
 cd "$DEV_DIR"
@@ -308,10 +420,10 @@ else
 fi
 
 # =============================================================================
-#  Step 7 — Build Swift projects (with rollback preservation)
+#  Step 8 — Build Swift projects (with rollback preservation)
 # =============================================================================
 
-info "Step 7/${TOTAL_STEPS}: Building Swift projects"
+info "Step 8/${TOTAL_STEPS}: Building Swift projects"
 
 # Build any Swift package found under tooling/
 for _dir in "$TOOLING_DIR"/*/; do
@@ -393,10 +505,10 @@ for _dir in "$SITES_DIR"/*/; do
 done
 
 # =============================================================================
-#  Step 8 — Configure Apache (with atomic reload)
+#  Step 9 — Configure Apache (with atomic reload)
 # =============================================================================
 
-info "Step 8/${TOTAL_STEPS}: Configuring Apache"
+info "Step 9/${TOTAL_STEPS}: Configuring Apache"
 
 enable_module() {
     _mod="$1"
@@ -642,10 +754,10 @@ fi
 rm -f "$_old_conf" 2>/dev/null
 
 # =============================================================================
-#  Step 9 — Initialise SQLite state database & assign server ports
+#  Step 10 — Initialise SQLite state database & assign server ports
 # =============================================================================
 
-info "Step 9/${TOTAL_STEPS}: Initialising state database & assigning ports"
+info "Step 10/${TOTAL_STEPS}: Initialising state database & assigning ports"
 
 db_init
 
@@ -694,10 +806,10 @@ chmod +x "$SCRIPTS_DIR/sites-watcher.sh"  2>/dev/null || true
 chmod +x "$SCRIPTS_DIR/backup.sh"         2>/dev/null || true
 
 # =============================================================================
-#  Step 10 — Configure Cloudflare tunnel (in-repo config, credentials off-repo)
+#  Step 11 — Configure Cloudflare tunnel (in-repo config, credentials off-repo)
 # =============================================================================
 
-info "Step 10/${TOTAL_STEPS}: Configuring Cloudflare tunnel"
+info "Step 11/${TOTAL_STEPS}: Configuring Cloudflare tunnel"
 
 mkdir -p "$HOME/.cloudflared"
 
@@ -733,10 +845,10 @@ else
 fi
 
 # =============================================================================
-#  Step 11 — Install log rotation (newsyslog)
+#  Step 12 — Install log rotation (newsyslog)
 # =============================================================================
 
-info "Step 11/${TOTAL_STEPS}: Installing log rotation config"
+info "Step 12/${TOTAL_STEPS}: Installing log rotation config"
 
 _newsyslog_src="$NEWSYSLOG_DIR/com.mac9sb.conf"
 _newsyslog_dest="/etc/newsyslog.d/com.mac9sb.conf"
@@ -751,10 +863,10 @@ else
 fi
 
 # =============================================================================
-#  Step 12 — Symlink launchd agents
+#  Step 13 — Symlink launchd agents
 # =============================================================================
 
-info "Step 12/${TOTAL_STEPS}: Symlinking launchd agents"
+info "Step 13/${TOTAL_STEPS}: Symlinking launchd agents"
 
 # All plists are static files with literal paths — symlinked for easy management.
 # server-manager.plist  → supervises all server binaries (inferred from filesystem)
@@ -787,10 +899,10 @@ for _plist_name in $_plist_list; do
 done
 
 # =============================================================================
-#  Step 13 — Test & restart Apache
+#  Step 14 — Test & restart Apache
 # =============================================================================
 
-info "Step 13/${TOTAL_STEPS}: Testing and restarting Apache"
+info "Step 14/${TOTAL_STEPS}: Testing and restarting Apache"
 
 for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
@@ -810,10 +922,10 @@ else
 fi
 
 # =============================================================================
-#  Step 14 — R2 backup credentials check
+#  Step 15 — R2 backup credentials check
 # =============================================================================
 
-info "Step 14/${TOTAL_STEPS}: Checking backup prerequisites"
+info "Step 15/${TOTAL_STEPS}: Checking backup prerequisites"
 
 _r2_creds="$DEV_DIR/.env.local"
 if [ -f "$_r2_creds" ]; then
