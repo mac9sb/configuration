@@ -278,7 +278,7 @@ fi
 info "Step 6/${TOTAL_STEPS}: Installing Zed"
 
 ZED_APP="/Applications/Zed.app"
-ZED_DMG_VERSION="${ZED_DMG_VERSION:-0.222.4}" # version like 0.222.4 from https://zed.dev/releases (bump here or override ZED_DMG_VERSION)
+ZED_DMG_VERSION="${ZED_DMG_VERSION:-0.222.4}" # version like 0.222.4 from https://zed.dev/releases (bump here or override ZED_DMG_VERSION; pinned 2026-02-08)
 case "$(uname -m)" in
     arm64|aarch64) ZED_ASSET="Zed-aarch64.dmg" ;;
     x86_64|amd64) ZED_ASSET="Zed-x86_64.dmg" ;;
@@ -317,12 +317,15 @@ else
                 -o "$_zed_dmg" \
                 -w '%{url_effective}')"; then
                 info "Downloaded Zed DMG from ${_zed_effective_url:-$ZED_DMG_URL}"
-                mkdir -p "$_zed_mount"
-                # hdiutil verify checks DMG integrity, not signature authenticity.
-                if hdiutil verify "$_zed_dmg" >"$_zed_dmg_verify_log" 2>&1; then
-                    if hdiutil attach "$_zed_dmg" -nobrowse -quiet -mountpoint "$_zed_mount"; then
-                        if [ -d "$_zed_mount/Zed.app" ]; then
-                            _codesign_ok=true
+                if [ ! -s "$_zed_dmg" ]; then
+                    warn "Downloaded Zed DMG is empty - install manually later"
+                else
+                    mkdir -p "$_zed_mount"
+                    # hdiutil verify checks DMG integrity, not signature authenticity.
+                    if hdiutil verify "$_zed_dmg" >"$_zed_dmg_verify_log" 2>&1; then
+                        if hdiutil attach "$_zed_dmg" -nobrowse -quiet -mountpoint "$_zed_mount"; then
+                            if [ -d "$_zed_mount/Zed.app" ]; then
+                                _codesign_ok=true
                             _spctl_ok=true
                             > "$_zed_verify_log" # truncate log before appending
                             if ! codesign --verify --deep --strict --verbose=2 "$_zed_mount/Zed.app" >>"$_zed_verify_log" 2>&1; then
@@ -357,11 +360,12 @@ else
                     else
                         warn "Failed to mount Zed DMG — install manually later"
                     fi
-                else
-                    warn "Downloaded Zed DMG failed verification — install manually later"
-                    if [ -s "$_zed_dmg_verify_log" ]; then
-                        warn "Verification output:"
-                        sed 's/^/  /' "$_zed_dmg_verify_log"
+                    else
+                        warn "Downloaded Zed DMG failed verification — install manually later"
+                        if [ -s "$_zed_dmg_verify_log" ]; then
+                            warn "Verification output:"
+                            sed 's/^/  /' "$_zed_dmg_verify_log"
+                        fi
                     fi
                 fi
             else
