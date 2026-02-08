@@ -280,12 +280,16 @@ info "Step 6/${TOTAL_STEPS}: Installing Zed"
 ZED_APP="/Applications/Zed.app"
 ZED_DMG_VERSION="${ZED_DMG_VERSION:-0.222.4}" # version like 0.222.4 from https://zed.dev/releases (bump here or override ZED_DMG_VERSION; pinned 2026-02-08)
 ZED_ASSET="Zed-aarch64.dmg" # Apple Silicon only
+ZED_SUPPORTED=true
 if [ "$(uname -m)" != "arm64" ] && [ "$(uname -m)" != "aarch64" ]; then
-    warn "Zed install expects Apple Silicon (arm64) -- update ZED_ASSET for Intel Macs if needed"
+    ZED_SUPPORTED=false
+    warn "Zed install expects Apple Silicon (arm64) -- skipping on this machine"
 fi
 
 if [ -d "$ZED_APP" ]; then
     success "Zed already installed"
+elif [ "$ZED_SUPPORTED" != true ]; then
+    warn "Skipping Zed install for unsupported architecture"
 else
     TMPDIR_ZED="$(mktemp -d)"
     ZED_DMG_URL="https://zed.dev/download-success?asset=${ZED_ASSET}&version=${ZED_DMG_VERSION}&channel=stable" # download-success endpoint serves the version+arch stable DMG
