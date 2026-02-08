@@ -710,15 +710,18 @@ jobs:
           OLD_PID="$(sqlite3 "$DB" "SELECT pid FROM servers WHERE name = 'test-server';")"
           OLD_MTIME="$(sqlite3 "$DB" "SELECT binary_mtime FROM servers WHERE name = 'test-server';")"
 
-          # Modify source to produce a genuinely different binary, then rebuild
+          # Modify source to produce a genuinely different binary, then rebuild.
+          # Use a print statement (not a comment) so the compiler emits different code.
           cd "$TEST_APP"
-          echo '// rebuild marker: '"$(date +%s)" >> Sources/main.swift
+          sed -i '' '1s/^/let _rebuildMarker = "'"$(date +%s)"'"\n/' Sources/main.swift
           swift build -c release
 
-          # Resolve the binary path and verify its mtime actually changed
+          # Resolve the binary path and explicitly touch it to guarantee mtime changes
+          # (Swift's llbuild may skip file update if output is identical)
           . "$SCRIPTS/db.sh"
           EXEC_NAME="$(get_exec_name "$TEST_APP")"
           BINARY="$(get_release_binary "$TEST_APP" "$EXEC_NAME")"
+          touch "$BINARY"
           CUR_MTIME="$(stat -f '%m' "$BINARY")"
           echo "Binary mtime after rebuild: $CUR_MTIME (was $OLD_MTIME)"
 
@@ -799,8 +802,12 @@ jobs:
 
           # Restore the good binary for subsequent tests
           cd "$TEST_APP"
-          echo '// restore marker: '"$(date +%s)" >> Sources/main.swift
+          sed -i '' '1s/^/let _restoreMarker = "'"$(date +%s)"'"\n/' Sources/main.swift
           swift build -c release
+          . "$SCRIPTS/db.sh"
+          EXEC_NAME="$(get_exec_name "$TEST_APP")"
+          BINARY="$(get_release_binary "$TEST_APP" "$EXEC_NAME")"
+          touch "$BINARY"
           sleep 12
 
       - name: "server-manager: handles SIGUSR1 restart request"
