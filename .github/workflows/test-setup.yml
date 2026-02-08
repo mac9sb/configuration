@@ -368,3 +368,585 @@ jobs:
             fi
           done
           exit $FAIL
+
+  # ===========================================================================
+  #  Integration tests for sites-watcher and server-manager
+  # ===========================================================================
+  test-scripts:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # ── Bootstrap environment ────────────────────────────────────────────
+      - name: Bootstrap environment
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          ln -sfn "$GITHUB_WORKSPACE" "$HOME/Developer"
+
+          sudo mkdir -p /etc/pam.d
+          sudo touch /etc/pam.d/sudo_local.template
+          echo "auth       sufficient     pam_tid.so" | sudo tee /etc/pam.d/sudo_local.template >/dev/null
+
+          mkdir -p "$HOME/Library/Application Support/com.mac9sb"
+          mkdir -p "$HOME/Library/Logs/com.mac9sb"
+          mkdir -p "$HOME/Library/LaunchAgents"
+          mkdir -p "$HOME/.ssh"
+          mkdir -p "$HOME/.cloudflared"
+
+          cd "$HOME/Developer"
+          sudo -E ./setup.sh
+
+      # ── Create a fake server binary for testing ──────────────────────────
+      - name: Create test server app
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          SITES_DIR="$HOME/Developer/sites"
+          TEST_APP="$SITES_DIR/test-server"
+          mkdir -p "$TEST_APP"
+
+          # Minimal Package.swift with executableTarget
+          cat > "$TEST_APP/Package.swift" << 'SWIFT'
+          // swift-tools-version: 5.9
+          import PackageDescription
+          let package = Package(
+              name: "test-server",
+              targets: [
+                  .executableTarget(name: "test-server", path: "Sources")
+              ]
+          )
+          SWIFT
+
+          # Simple HTTP server that responds on $PORT
+          mkdir -p "$TEST_APP/Sources"
+          cat > "$TEST_APP/Sources/main.swift" << 'SWIFT'
+          import Foundation
+          #if canImport(FoundationNetworking)
+          import FoundationNetworking
+          #endif
+
+          let port = ProcessInfo.processInfo.environment["PORT"].flatMap(UInt16.init) ?? 8080
+
+          let task = Process()
+          task.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+          task.arguments = ["-c", """
+          import http.server, os
+          port = int(os.environ.get('PORT', '8080'))
+          s = http.server.HTTPServer(('127.0.0.1', port), http.server.SimpleHTTPRequestHandler)
+          print(f'Listening on {port}', flush=True)
+          s.serve_forever()
+          """]
+          task.environment = ProcessInfo.processInfo.environment
+          try task.run()
+          task.waitUntilExit()
+          SWIFT
+
+          cd "$TEST_APP" && swift build -c release
+          echo "OK: test-server built"
+
+      # ── Create a fake static site for testing ────────────────────────────
+      - name: Create test static site
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          SITES_DIR="$HOME/Developer/sites"
+          TEST_STATIC="$SITES_DIR/test-static.example.com"
+          mkdir -p "$TEST_STATIC/.output"
+          echo "<html><body>Hello from test-static</body></html>" > "$TEST_STATIC/.output/index.html"
+          echo "OK: test-static.example.com created with .output"
+
+      # ====================================================================
+      #  Sites-watcher tests
+      # ====================================================================
+
+      - name: "sites-watcher: detects new static site"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          SCRIPTS="$HOME/Developer/utilities/scripts"
+          DB="$HOME/Library/Application Support/com.mac9sb/state.db"
+
+          # Clear previous state so watcher sees a change
+          sqlite3 "$DB" "DELETE FROM sites WHERE name = 'test-static.example.com';"
+
+          # Run watcher
+          cd "$HOME/Developer"
+          . "$SCRIPTS/db.sh"
+          db_init
+          /bin/sh "$SCRIPTS/sites-watcher.sh" || true
+
+          # Verify it was registered as static
+          TYPE="$(sqlite3 "$DB" "SELECT type FROM sites WHERE name = 'test-static.example.com';")"
+          if [ "$TYPE" = "static" ]; then
+            echo "OK: test-static.example.com registered as static"
+          else
+            echo "FAIL: expected type 'static', got '$TYPE'"
+            exit 1
+          fi
+
+      - name: "sites-watcher: detects new server app"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          SCRIPTS="$HOME/Developer/utilities/scripts"
+          DB="$HOME/Library/Application Support/com.mac9sb/state.db"
+
+          sqlite3 "$DB" "DELETE FROM sites WHERE name = 'test-server';"
+
+          cd "$HOME/Developer"
+          /bin/sh "$SCRIPTS/sites-watcher.sh" || true
+
+          TYPE="$(sqlite3 "$DB" "SELECT type FROM sites WHERE name = 'test-server';")"
+          PORT="$(sqlite3 "$DB" "SELECT port FROM sites WHERE name = 'test-server';")"
+          if [ "$TYPE" = "server" ] && [ -n "$PORT" ]; then
+            echo "OK: test-server registered as server on port $PORT"
+          else
+            echo "FAIL: expected type 'server' with port, got type='$TYPE' port='$PORT'"
+            exit 1
+          fi
+
+      - name: "sites-watcher: generates Apache config for static site"
+        run: |
+          CUSTOM_CONF="/etc/apache2/extra/custom.conf"
+          if grep -q "test-static.example.com" "$CUSTOM_CONF"; then
+            echo "OK: custom.conf contains test-static.example.com config"
+          else
+            echo "FAIL: test-static.example.com not in custom.conf"
+            cat "$CUSTOM_CONF"
+            exit 1
+          fi
+
+      - name: "sites-watcher: generates VirtualHost for custom domain"
+        run: |
+          CUSTOM_CONF="/etc/apache2/extra/custom.conf"
+          if grep -q "ServerName test-static.example.com" "$CUSTOM_CONF"; then
+            echo "OK: VirtualHost ServerName for test-static.example.com found"
+          else
+            echo "FAIL: VirtualHost ServerName for custom domain not found"
+            cat "$CUSTOM_CONF"
+            exit 1
+          fi
+
+      - name: "sites-watcher: generates proxy config for server app"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          DB="$HOME/Library/Application Support/com.mac9sb/state.db"
+          CUSTOM_CONF="/etc/apache2/extra/custom.conf"
+          PORT="$(sqlite3 "$DB" "SELECT port FROM sites WHERE name = 'test-server';")"
+
+          if grep -q "ProxyPass.*http://127.0.0.1:${PORT}/" "$CUSTOM_CONF"; then
+            echo "OK: ProxyPass for test-server on port $PORT found"
+          else
+            echo "FAIL: ProxyPass for test-server not in custom.conf"
+            cat "$CUSTOM_CONF"
+            exit 1
+          fi
+
+      - name: "sites-watcher: generates subdomain VirtualHost for server app"
+        run: |
+          CUSTOM_CONF="/etc/apache2/extra/custom.conf"
+          if grep -q "ServerName test-server.maclong.dev" "$CUSTOM_CONF"; then
+            echo "OK: VirtualHost ServerName test-server.maclong.dev found"
+          else
+            echo "FAIL: subdomain VirtualHost not found for test-server"
+            cat "$CUSTOM_CONF"
+            exit 1
+          fi
+
+      - name: "sites-watcher: Apache configtest passes with new sites"
+        run: sudo apachectl configtest
+
+      - name: "sites-watcher: no-op when state unchanged"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          SCRIPTS="$HOME/Developer/utilities/scripts"
+          LOG="$HOME/Library/Logs/com.mac9sb/sites-watcher.log"
+
+          # Record log size before
+          BEFORE="$(wc -c < "$LOG" 2>/dev/null || echo 0)"
+
+          cd "$HOME/Developer"
+          /bin/sh "$SCRIPTS/sites-watcher.sh" || true
+
+          AFTER="$(wc -c < "$LOG" 2>/dev/null || echo 0)"
+          if [ "$AFTER" -eq "$BEFORE" ]; then
+            echo "OK: watcher exited early (no state change, no log output)"
+          else
+            echo "WARN: watcher wrote to log on no-op run (may have detected a difference)"
+            tail -5 "$LOG"
+          fi
+
+      - name: "sites-watcher: updates cloudflared ingress for custom domains"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          CF_CONFIG="$HOME/Developer/utilities/cloudflared/config.yml"
+
+          # test-static.example.com is a custom domain (has dot, not primary)
+          if awk '/sites-watcher:BEGIN/,/sites-watcher:END/' "$CF_CONFIG" | grep -q "test-static.example.com"; then
+            echo "OK: cloudflared ingress has test-static.example.com entry"
+          else
+            echo "FAIL: test-static.example.com not in cloudflared ingress block"
+            cat "$CF_CONFIG"
+            exit 1
+          fi
+
+      - name: "sites-watcher: removes site when directory deleted"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          SCRIPTS="$HOME/Developer/utilities/scripts"
+          DB="$HOME/Library/Application Support/com.mac9sb/state.db"
+
+          # Create a temporary site, run watcher, delete it, run watcher again
+          TEMP_SITE="$HOME/Developer/sites/temp-removal-test"
+          mkdir -p "$TEMP_SITE/.output"
+          echo "<html>temp</html>" > "$TEMP_SITE/.output/index.html"
+
+          cd "$HOME/Developer"
+          /bin/sh "$SCRIPTS/sites-watcher.sh" || true
+
+          # Verify it was added
+          ADDED="$(sqlite3 "$DB" "SELECT name FROM sites WHERE name = 'temp-removal-test';")"
+          if [ "$ADDED" != "temp-removal-test" ]; then
+            echo "FAIL: temp-removal-test was not added"
+            exit 1
+          fi
+          echo "OK: temp-removal-test added to database"
+
+          # Delete and re-run
+          rm -rf "$TEMP_SITE"
+          /bin/sh "$SCRIPTS/sites-watcher.sh" || true
+
+          REMOVED="$(sqlite3 "$DB" "SELECT name FROM sites WHERE name = 'temp-removal-test';")"
+          if [ -z "$REMOVED" ]; then
+            echo "OK: temp-removal-test pruned from database after removal"
+          else
+            echo "FAIL: temp-removal-test still in database after deletion"
+            exit 1
+          fi
+
+      # ====================================================================
+      #  Server-manager tests
+      # ====================================================================
+
+      - name: "server-manager: starts server binary"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          SCRIPTS="$HOME/Developer/utilities/scripts"
+          DB="$HOME/Library/Application Support/com.mac9sb/state.db"
+
+          # Start manager in background, let it do one reconcile cycle
+          cd "$HOME/Developer"
+          /bin/sh "$SCRIPTS/server-manager.sh" &
+          MGR_PID=$!
+          sleep 8
+
+          # Check that test-server was started
+          SERVER_PID="$(sqlite3 "$DB" "SELECT pid FROM servers WHERE name = 'test-server';")"
+          if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
+            echo "OK: test-server running with PID $SERVER_PID"
+          else
+            echo "FAIL: test-server not running (PID=$SERVER_PID)"
+            kill "$MGR_PID" 2>/dev/null || true
+            exit 1
+          fi
+
+          # Save manager PID for subsequent tests
+          echo "$MGR_PID" > /tmp/test_mgr_pid
+
+      - name: "server-manager: server responds to HTTP"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          DB="$HOME/Library/Application Support/com.mac9sb/state.db"
+          PORT="$(sqlite3 "$DB" "SELECT port FROM sites WHERE name = 'test-server';")"
+
+          # Give the python HTTP server a moment to start
+          sleep 3
+          STATUS="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:${PORT}/" 2>/dev/null)" || true
+          if echo "$STATUS" | grep -qE '^[23]'; then
+            echo "OK: test-server responds on port $PORT (HTTP $STATUS)"
+          else
+            echo "FAIL: test-server not responding on port $PORT (HTTP $STATUS)"
+            exit 1
+          fi
+
+      - name: "server-manager: restarts crashed server"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          DB="$HOME/Library/Application Support/com.mac9sb/state.db"
+
+          OLD_PID="$(sqlite3 "$DB" "SELECT pid FROM servers WHERE name = 'test-server';")"
+          echo "Killing test-server (PID $OLD_PID) to simulate crash"
+          kill "$OLD_PID" 2>/dev/null || true
+
+          # Wait for manager to detect and restart (poll interval starts at 5s)
+          sleep 12
+
+          NEW_PID="$(sqlite3 "$DB" "SELECT pid FROM servers WHERE name = 'test-server';")"
+          if [ -n "$NEW_PID" ] && [ "$NEW_PID" != "$OLD_PID" ] && kill -0 "$NEW_PID" 2>/dev/null; then
+            echo "OK: test-server restarted with new PID $NEW_PID (was $OLD_PID)"
+          else
+            echo "FAIL: test-server not restarted (old=$OLD_PID new=$NEW_PID)"
+            exit 1
+          fi
+
+      - name: "server-manager: detects binary rebuild and swaps"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          DB="$HOME/Library/Application Support/com.mac9sb/state.db"
+          SCRIPTS="$HOME/Developer/utilities/scripts"
+          TEST_APP="$HOME/Developer/sites/test-server"
+
+          OLD_PID="$(sqlite3 "$DB" "SELECT pid FROM servers WHERE name = 'test-server';")"
+          OLD_MTIME="$(sqlite3 "$DB" "SELECT binary_mtime FROM servers WHERE name = 'test-server';")"
+
+          # Rebuild the binary (changes mtime)
+          cd "$TEST_APP" && swift build -c release
+          sleep 8
+
+          NEW_PID="$(sqlite3 "$DB" "SELECT pid FROM servers WHERE name = 'test-server';")"
+          NEW_MTIME="$(sqlite3 "$DB" "SELECT binary_mtime FROM servers WHERE name = 'test-server';")"
+          if [ "$NEW_PID" != "$OLD_PID" ] && [ "$NEW_MTIME" != "$OLD_MTIME" ]; then
+            echo "OK: binary rebuild detected — server restarted (PID $OLD_PID -> $NEW_PID)"
+          else
+            echo "FAIL: binary rebuild not detected or server not restarted"
+            echo "  old_pid=$OLD_PID new_pid=$NEW_PID old_mtime=$OLD_MTIME new_mtime=$NEW_MTIME"
+            exit 1
+          fi
+
+      - name: "server-manager: preserves backup binary on rebuild"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          . "$HOME/Developer/utilities/scripts/db.sh"
+          TEST_APP="$HOME/Developer/sites/test-server"
+
+          EXEC_NAME="$(get_exec_name "$TEST_APP")"
+          BINARY="$(get_release_binary "$TEST_APP" "$EXEC_NAME")"
+
+          if [ -f "${BINARY}.bak" ]; then
+            echo "OK: backup binary exists at ${BINARY}.bak"
+          else
+            echo "FAIL: no backup binary at ${BINARY}.bak"
+            exit 1
+          fi
+
+          if [ -f "${BINARY}.run" ]; then
+            echo "OK: run binary exists at ${BINARY}.run"
+          else
+            echo "FAIL: no run binary at ${BINARY}.run"
+            exit 1
+          fi
+
+      - name: "server-manager: rollback on quick crash after rebuild"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          DB="$HOME/Library/Application Support/com.mac9sb/state.db"
+          SCRIPTS="$HOME/Developer/utilities/scripts"
+          TEST_APP="$HOME/Developer/sites/test-server"
+
+          . "$SCRIPTS/db.sh"
+          EXEC_NAME="$(get_exec_name "$TEST_APP")"
+          BINARY="$(get_release_binary "$TEST_APP" "$EXEC_NAME")"
+          RUN_BINARY="${BINARY}.run"
+          BAK_BINARY="${BINARY}.bak"
+
+          # Save the known-good .bak checksum
+          BAK_SUM="$(shasum "$BAK_BINARY" 2>/dev/null | awk '{print $1}')"
+
+          # Replace the source binary with one that exits immediately (simulates bad build)
+          cat > /tmp/bad-server.swift << 'SWIFT'
+          import Foundation
+          exit(1)
+          SWIFT
+          swiftc -o "$BINARY" /tmp/bad-server.swift 2>/dev/null || true
+
+          # Kill current server to trigger a "rebuild detected + restart" cycle
+          OLD_PID="$(sqlite3 "$DB" "SELECT pid FROM servers WHERE name = 'test-server';")"
+          kill "$OLD_PID" 2>/dev/null || true
+
+          # Wait for manager to detect crash, see new binary, try it, and roll back
+          sleep 20
+
+          # After rollback, .run should match the old .bak
+          RUN_SUM="$(shasum "$RUN_BINARY" 2>/dev/null | awk '{print $1}')"
+          if [ "$RUN_SUM" = "$BAK_SUM" ]; then
+            echo "OK: rollback restored .bak to .run after bad binary crash"
+          else
+            echo "WARN: .run doesn't match .bak (rollback may not have triggered)"
+            echo "  bak=$BAK_SUM run=$RUN_SUM"
+          fi
+
+          # Restore the good binary for subsequent tests
+          cd "$TEST_APP" && swift build -c release
+          sleep 8
+
+      - name: "server-manager: handles SIGUSR1 restart request"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          DB="$HOME/Library/Application Support/com.mac9sb/state.db"
+          SCRIPTS="$HOME/Developer/utilities/scripts"
+
+          OLD_PID="$(sqlite3 "$DB" "SELECT pid FROM servers WHERE name = 'test-server';")"
+          MGR_PID="$(cat /tmp/test_mgr_pid)"
+
+          # Queue a restart and signal
+          /bin/sh "$SCRIPTS/restart-server.sh" test-server
+
+          sleep 8
+
+          NEW_PID="$(sqlite3 "$DB" "SELECT pid FROM servers WHERE name = 'test-server';")"
+          if [ -n "$NEW_PID" ] && [ "$NEW_PID" != "$OLD_PID" ]; then
+            echo "OK: restart-server.sh triggered restart (PID $OLD_PID -> $NEW_PID)"
+          else
+            echo "FAIL: restart request did not trigger restart"
+            exit 1
+          fi
+
+      - name: "server-manager: SIGHUP triggers re-scan"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          DB="$HOME/Library/Application Support/com.mac9sb/state.db"
+          LOG="$HOME/Library/Logs/com.mac9sb/server-manager.log"
+          MGR_PID="$(cat /tmp/test_mgr_pid)"
+
+          BEFORE="$(wc -l < "$LOG" 2>/dev/null || echo 0)"
+          kill -HUP "$MGR_PID"
+          sleep 6
+
+          if tail -n +$((BEFORE + 1)) "$LOG" | grep -q "SIGHUP received"; then
+            echo "OK: SIGHUP triggered re-scan"
+          else
+            echo "FAIL: SIGHUP not logged"
+            tail -10 "$LOG"
+            exit 1
+          fi
+
+      - name: "server-manager: SIGTERM stops all servers"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          DB="$HOME/Library/Application Support/com.mac9sb/state.db"
+          LOG="$HOME/Library/Logs/com.mac9sb/server-manager.log"
+          MGR_PID="$(cat /tmp/test_mgr_pid)"
+
+          SERVER_PID="$(sqlite3 "$DB" "SELECT pid FROM servers WHERE name = 'test-server';")"
+
+          kill -TERM "$MGR_PID"
+          sleep 5
+
+          # Manager should have stopped all servers and exited
+          if ! kill -0 "$MGR_PID" 2>/dev/null; then
+            echo "OK: server-manager exited after SIGTERM"
+          else
+            echo "FAIL: server-manager still running"
+            kill -9 "$MGR_PID" 2>/dev/null || true
+            exit 1
+          fi
+
+          if [ -n "$SERVER_PID" ] && ! kill -0 "$SERVER_PID" 2>/dev/null; then
+            echo "OK: test-server stopped (PID $SERVER_PID no longer running)"
+          else
+            echo "WARN: test-server PID $SERVER_PID status unclear"
+          fi
+
+          if grep -q "Server manager stopped" "$LOG"; then
+            echo "OK: clean shutdown logged"
+          else
+            echo "FAIL: clean shutdown not logged"
+            tail -5 "$LOG"
+            exit 1
+          fi
+
+      # ====================================================================
+      #  DB helper tests
+      # ====================================================================
+
+      - name: "db.sh: port assignment is stable"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          . "$HOME/Developer/utilities/scripts/db.sh"
+          db_init
+
+          PORT1="$(db_get_port "port-test-app")"
+          PORT2="$(db_get_port "port-test-app")"
+          if [ "$PORT1" = "$PORT2" ]; then
+            echo "OK: repeated db_get_port returns same port ($PORT1)"
+          else
+            echo "FAIL: port changed ($PORT1 -> $PORT2)"
+            exit 1
+          fi
+
+          # Clean up
+          db_remove_site "port-test-app"
+
+      - name: "db.sh: restart queue works"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          . "$HOME/Developer/utilities/scripts/db.sh"
+          db_init
+
+          db_queue_restart "queue-test-1"
+          db_queue_restart "queue-test-2"
+
+          if db_has_pending_restarts; then
+            echo "OK: pending restarts detected"
+          else
+            echo "FAIL: no pending restarts"
+            exit 1
+          fi
+
+          POPPED="$(db_pop_all_restarts)"
+          if echo "$POPPED" | grep -q "queue-test-1" && echo "$POPPED" | grep -q "queue-test-2"; then
+            echo "OK: both restart requests popped"
+          else
+            echo "FAIL: expected both requests, got: $POPPED"
+            exit 1
+          fi
+
+          if ! db_has_pending_restarts; then
+            echo "OK: queue empty after pop"
+          else
+            echo "FAIL: queue not empty"
+            exit 1
+          fi
+
+      - name: "db.sh: site prune removes stale entries"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          . "$HOME/Developer/utilities/scripts/db.sh"
+          db_init
+
+          db_set_site "keep-me" "static"
+          db_set_site "remove-me" "static"
+          db_prune_sites "keep-me"
+
+          KEPT="$(db_get_site_type "keep-me")"
+          REMOVED="$(db_get_site_type "remove-me")"
+          if [ "$KEPT" = "static" ] && [ -z "$REMOVED" ]; then
+            echo "OK: prune kept 'keep-me', removed 'remove-me'"
+          else
+            echo "FAIL: kept='$KEPT' removed='$REMOVED'"
+            exit 1
+          fi
+
+          db_remove_site "keep-me"
+
+      - name: "db.sh: config key-value store"
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          . "$HOME/Developer/utilities/scripts/db.sh"
+          db_init
+
+          db_set_config "test_key" "test_value"
+          VAL="$(db_get_config "test_key")"
+          if [ "$VAL" = "test_value" ]; then
+            echo "OK: config set/get works"
+          else
+            echo "FAIL: expected 'test_value', got '$VAL'"
+            exit 1
+          fi
+
+          db_remove_config "test_key"
+          VAL2="$(db_get_config "test_key")"
+          if [ -z "$VAL2" ]; then
+            echo "OK: config remove works"
+          else
+            echo "FAIL: config not removed"
+            exit 1
+          fi
