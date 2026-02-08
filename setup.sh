@@ -281,7 +281,8 @@ ZED_APP="/Applications/Zed.app"
 ZED_DMG_VERSION="${ZED_DMG_VERSION:-0.222.4}" # version like 0.222.4 from https://zed.dev/releases (bump here or override ZED_DMG_VERSION; pinned 2026-02-08)
 ZED_ASSET="Zed-aarch64.dmg" # Apple Silicon only
 ZED_SUPPORTED=true
-if [ "$(uname -m)" != "arm64" ] && [ "$(uname -m)" != "aarch64" ]; then
+ZED_ARCH="$(uname -m)"
+if [ "$ZED_ARCH" != "arm64" ] && [ "$ZED_ARCH" != "aarch64" ]; then
     ZED_SUPPORTED=false
     warn "Zed install expects Apple Silicon (arm64) -- skipping on this machine"
 fi
