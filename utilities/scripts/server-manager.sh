@@ -2,7 +2,8 @@
 # =============================================================================
 #  Server Manager — single supervisor for all server binaries
 #
-#  Scans ~/Developer/sites/ for server binaries (.build/release/<exec>)
+#  Scans ~/Developer/sites/ for server binaries
+#  (.build/release/<exec> or .build/<triple>/release/<exec>)
 #  and manages each as a child process. No config file needed — the server
 #  list is inferred from the filesystem, matching the same discovery logic
 #  used by sites-watcher.sh and setup.sh.
@@ -120,7 +121,7 @@ poll_backoff() {
 # Preserve the currently running binary (.run) as a backup (.bak).
 # Called BEFORE swapping in a newly built binary, so .bak is genuinely
 # the last-known-good version that was actually running and healthy.
-# Usage: preserve_binary "name" "/path/to/.build/release/<exec>"
+# Usage: preserve_binary "name" "/path/to/release/<exec>"
 preserve_binary() {
     _name="$1"
     _binary="$2"
@@ -135,7 +136,7 @@ preserve_binary() {
 
 # Rollback to the last-known-good binary (.bak → .run).
 # Returns 0 if rollback succeeded, 1 if no backup exists.
-# Usage: rollback_binary "name" "/path/to/.build/release/<exec>"
+# Usage: rollback_binary "name" "/path/to/release/<exec>"
 rollback_binary() {
     _name="$1"
     _binary="$2"
@@ -157,7 +158,7 @@ rollback_binary() {
 # Deploy a source binary to the run location (.run) for execution.
 # The server always runs from .run so that swift build can overwrite
 # the original binary without disrupting the running process.
-# Usage: deploy_binary "/path/to/.build/release/<exec>"
+# Usage: deploy_binary "/path/to/release/<exec>"
 deploy_binary() {
     _binary="$1"
     _run_binary="${_binary}.run"
@@ -336,10 +337,7 @@ reconcile() {
 
         # Detect executable name from Package.swift
         _exec_name="$(get_exec_name "$_dir")" || continue
-        _binary="$_dir/.build/release/$_exec_name"
-
-        # Skip projects without a built binary
-        [ ! -f "$_binary" ] && continue
+        _binary="$(get_release_binary "$_dir" "$_exec_name")" || continue
 
         _discovered_names="${_discovered_names} ${_name}"
         _port="$(db_get_port "$_name")"
@@ -416,9 +414,7 @@ run_health_checks() {
         [ -d "$_dir/.output" ] && continue
 
         _exec_name="$(get_exec_name "$_dir")" || continue
-        _binary="$_dir/.build/release/$_exec_name"
-
-        [ ! -f "$_binary" ] && continue
+        _binary="$(get_release_binary "$_dir" "$_exec_name")" || continue
 
         if ! is_running "$_name"; then
             continue
@@ -467,8 +463,7 @@ while [ "$shutdown_flag" -eq 0 ]; do
             [ -z "$_req" ] && continue
             _req_dir="$SITES_DIR/$_req"
             _req_exec="$(get_exec_name "$_req_dir")" || true
-            if [ -n "$_req_exec" ] && [ -f "$_req_dir/.build/release/$_req_exec" ]; then
-                _binary="$_req_dir/.build/release/$_req_exec"
+            if [ -n "$_req_exec" ] && _binary="$(get_release_binary "$_req_dir" "$_req_exec")"; then
                 _port="$(db_get_port "$_req")"
                 log "Restart requested for ${_req}"
                 stop_server "$_req"

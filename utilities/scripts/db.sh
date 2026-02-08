@@ -347,6 +347,33 @@ get_exec_name() {
     return 1
 }
 
+# Resolve the release binary path for a Swift package.
+# Checks the legacy .build/release layout and the target-triple layout.
+# Usage: _bin="$(get_release_binary "/path/to/project" "ExecName")"
+get_release_binary() {
+    _dir="$1"
+    _exec="$2"
+    [ -z "$_dir" ] && return 1
+    [ -z "$_exec" ] && return 1
+
+    _legacy="$_dir/.build/release/$_exec"
+    if [ -f "$_legacy" ]; then
+        printf '%s' "$_legacy"
+        return 0
+    fi
+
+    if [ -d "$_dir/.build" ]; then
+        for _candidate in "$_dir"/.build/*/release/"$_exec"; do
+            if [ -f "$_candidate" ]; then
+                printf '%s' "$_candidate"
+                return 0
+            fi
+        done
+    fi
+
+    return 1
+}
+
 # Import sites state from the legacy flat file.
 # Reads lines like "repo:type" and inserts them into the sites table.
 # Usage: db_import_sites_state "/path/to/sites-state"

@@ -356,11 +356,14 @@ for _dir in "$SITES_DIR"/*/; do
     _exec_name="$(get_exec_name "$_dir")" || true
     [ -z "$_exec_name" ] && continue
     for _suffix in .run .bak .last-good; do
-        _file="$_dir/.build/release/${_exec_name}${_suffix}"
-        if [ -f "$_file" ]; then
-            rm -f "$_file"
-            _cleaned_binaries=$((_cleaned_binaries + 1))
-        fi
+        for _file in \
+            "$_dir/.build/release/${_exec_name}${_suffix}" \
+            "$_dir"/.build/*/release/"${_exec_name}${_suffix}"; do
+            if [ -f "$_file" ]; then
+                rm -f "$_file"
+                _cleaned_binaries=$((_cleaned_binaries + 1))
+            fi
+        done
     done
 done
 
