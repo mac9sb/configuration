@@ -3,9 +3,7 @@
     "hide_gitignore": false
   },
   "agent_servers": {
-    "github-copilot": {
-      "type": "registry"
-    }
+    
   },
   "agent": {
     "always_allow_tool_actions": true,
