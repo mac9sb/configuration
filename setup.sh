@@ -184,23 +184,6 @@ if [ -f "$_ssh_config_src" ]; then
     fi
 fi
 
-# Zed editor settings (nested directory)
-_zed_settings_src="$DOTFILES_DIR/settings.json"
-_zed_settings_dest="$HOME/.config/zed/settings.json"
-if [ -f "$_zed_settings_src" ]; then
-    mkdir -p "$HOME/.config/zed"
-    if [ -L "$_zed_settings_dest" ] && [ "$(readlink "$_zed_settings_dest")" = "$_zed_settings_src" ]; then
-        success "  ~/.config/zed/settings.json already symlinked"
-    else
-        if [ -e "$_zed_settings_dest" ] && [ ! -L "$_zed_settings_dest" ]; then
-            mv "$_zed_settings_dest" "${_zed_settings_dest}.bak.$(date +%Y%m%d%H%M%S)"
-            warn "  Backed up existing ~/.config/zed/settings.json"
-        fi
-        ln -sf "$_zed_settings_src" "$_zed_settings_dest"
-        success "  ~/.config/zed/settings.json → $_zed_settings_src"
-    fi
-fi
-
 # =============================================================================
 #  Step 3 — SSH key
 # =============================================================================
@@ -278,11 +261,11 @@ info "Step 6/${TOTAL_STEPS}: Installing GitHub CLI (gh)"
 if ! command_exists gh; then
     GH_LATEST=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/cli/cli/releases/latest | sed 's|.*/||')
     GH_VERSION="${GH_LATEST#v}"
-    GH_TAR_URL="https://github.com/cli/cli/releases/download/${GH_LATEST}/gh_${GH_VERSION}_macOS_arm64.tar.gz"
+    GH_ZIP_URL="https://github.com/cli/cli/releases/download/${GH_LATEST}/gh_${GH_VERSION}_macOS_arm64.zip"
     info "Downloading gh ${GH_LATEST}..."
     TMPDIR_GH="$(mktemp -d)"
-    if curl -sL --fail --max-time 60 "$GH_TAR_URL" -o "$TMPDIR_GH/gh.tar.gz"; then
-        if tar -xzf "$TMPDIR_GH/gh.tar.gz" -C "$TMPDIR_GH" 2>/dev/null; then
+    if curl -sL --fail --max-time 60 "$GH_ZIP_URL" -o "$TMPDIR_GH/gh.zip"; then
+        if unzip -q "$TMPDIR_GH/gh.zip" -d "$TMPDIR_GH" 2>/dev/null; then
             if sudo mv "$TMPDIR_GH/gh_${GH_VERSION}_macOS_arm64/bin/gh" /usr/local/bin/gh 2>/dev/null; then
                 sudo chmod +x /usr/local/bin/gh
                 if command_exists gh; then
@@ -294,7 +277,7 @@ if ! command_exists gh; then
                 warn "Failed to move gh to /usr/local/bin — install manually later"
             fi
         else
-            warn "Failed to extract gh tarball — install manually later"
+            warn "Failed to extract gh zip — install manually later"
         fi
     else
         warn "Failed to download gh — install manually later"
@@ -311,24 +294,19 @@ fi
 info "Step 7/${TOTAL_STEPS}: Installing GitHub Copilot CLI"
 if ! command_exists github-copilot-cli; then
     COPILOT_LATEST=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/github/gh-copilot/releases/latest | sed 's|.*/||')
-    COPILOT_VERSION="${COPILOT_LATEST#v}"
-    COPILOT_TAR_URL="https://github.com/github/gh-copilot/releases/download/${COPILOT_LATEST}/darwin-arm64.tar.gz"
+    COPILOT_BIN_URL="https://github.com/github/gh-copilot/releases/download/${COPILOT_LATEST}/darwin-arm64"
     info "Downloading GitHub Copilot CLI ${COPILOT_LATEST}..."
     TMPDIR_COPILOT="$(mktemp -d)"
-    if curl -sL --fail --max-time 60 "$COPILOT_TAR_URL" -o "$TMPDIR_COPILOT/copilot.tar.gz"; then
-        if tar -xzf "$TMPDIR_COPILOT/copilot.tar.gz" -C "$TMPDIR_COPILOT" 2>/dev/null; then
-            if sudo mv "$TMPDIR_COPILOT/github-copilot-cli" /usr/local/bin/github-copilot-cli 2>/dev/null; then
-                sudo chmod +x /usr/local/bin/github-copilot-cli
-                if command_exists github-copilot-cli; then
-                    success "GitHub Copilot CLI installed: $(github-copilot-cli --version 2>&1 | head -1 || echo 'installed')"
-                else
-                    warn "Copilot CLI binary moved but not found on PATH"
-                fi
+    if curl -sL --fail --max-time 60 "$COPILOT_BIN_URL" -o "$TMPDIR_COPILOT/github-copilot-cli"; then
+        if sudo mv "$TMPDIR_COPILOT/github-copilot-cli" /usr/local/bin/github-copilot-cli 2>/dev/null; then
+            sudo chmod +x /usr/local/bin/github-copilot-cli
+            if command_exists github-copilot-cli; then
+                success "GitHub Copilot CLI installed: $(github-copilot-cli --version 2>&1 | head -1 || echo 'installed')"
             else
-                warn "Failed to move copilot binary to /usr/local/bin — install manually later"
+                warn "Copilot CLI binary moved but not found on PATH"
             fi
         else
-            warn "Failed to extract Copilot CLI tarball — install manually later"
+            warn "Failed to move copilot binary to /usr/local/bin — install manually later"
         fi
     else
         warn "Failed to download Copilot CLI — install manually later"
