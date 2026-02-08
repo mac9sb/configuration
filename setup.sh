@@ -302,15 +302,29 @@ else
                 if hdiutil verify "$_zed_dmg" >"$_zed_dmg_verify_log" 2>&1; then
                     if hdiutil attach "$_zed_dmg" -nobrowse -quiet -mountpoint "$_zed_mount"; then
                         if [ -d "$_zed_mount/Zed.app" ]; then
-                            if codesign --verify --deep --strict --verbose=2 "$_zed_mount/Zed.app" >"$_zed_verify_log" 2>&1 && \
-                               spctl --assess --type execute "$_zed_mount/Zed.app" >>"$_zed_verify_log" 2>&1; then
+                            _codesign_ok=true
+                            _spctl_ok=true
+                            if ! codesign --verify --deep --strict --verbose=2 "$_zed_mount/Zed.app" >"$_zed_verify_log" 2>&1; then
+                                _codesign_ok=false
+                            fi
+                            if ! spctl --assess --type execute "$_zed_mount/Zed.app" >>"$_zed_verify_log" 2>&1; then
+                                _spctl_ok=false
+                            fi
+                            if [ "$_codesign_ok" = true ] && [ "$_spctl_ok" = true ]; then
                                 if sudo ditto "$_zed_mount/Zed.app" "$ZED_APP"; then
                                     success "Zed installed to $ZED_APP"
                                 else
                                     warn "Failed to install Zed (sudo may have failed) — install manually later"
                                 fi
                             else
+                                if [ "$_codesign_ok" != true ]; then
+                                    warn "Zed codesign verification failed"
+                                fi
+                                if [ "$_spctl_ok" != true ]; then
+                                    warn "Zed Gatekeeper assessment failed"
+                                fi
                                 warn "Zed signature verification failed — install manually later"
+                                printf "  Verification output:\n"
                                 cat "$_zed_verify_log"
                             fi
                         else
@@ -322,6 +336,7 @@ else
                     fi
                 else
                     warn "Downloaded Zed DMG failed verification — install manually later"
+                    printf "  Verification output:\n"
                     cat "$_zed_dmg_verify_log"
                 fi
             else
