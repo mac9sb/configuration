@@ -461,7 +461,7 @@ for _dir in "$SITES_DIR"/*/; do
             continue
         fi
 
-        _binary="$_dir/.build/release/$_exec_name"
+        _binary="$(get_release_binary "$_dir" "$_exec_name")" || _binary="$_dir/.build/release/$_exec_name"
 
         # Preserve current run binary as backup before rebuilding
         if [ -f "${_binary}.run" ]; then
@@ -484,11 +484,13 @@ for _dir in "$SITES_DIR"/*/; do
         fi
         rm -f "$_build_log"
 
+        _binary="$(get_release_binary "$_dir" "$_exec_name")" || _binary="$_dir/.build/release/$_exec_name"
+
         # Classify by running: if the binary exits and produces .output
         # it's a static site generator. If it blocks, it's a server.
         if [ ! -d "$_dir/.output" ] && [ -f "$_binary" ]; then
             info "  Classifying $_name (timeout ${CLASSIFY_TIMEOUT}s)..."
-            if run_with_timeout "$CLASSIFY_TIMEOUT" sh -c "cd '$_dir' && '.build/release/$_exec_name'" 2>/dev/null; then
+            if run_with_timeout "$CLASSIFY_TIMEOUT" sh -c "cd \"$_dir\" && \"$_binary\"" 2>/dev/null; then
                 if [ -d "$_dir/.output" ]; then
                     success "  $_name → static site (.output generated)"
                 else
@@ -565,7 +567,7 @@ else
 fi
 
 # Build custom.conf by scanning sites/ for static (.output) and server
-# (.build/release/<exec>) projects — no hardcoded arrays.
+# (.build/release/<exec> or .build/<triple>/release/<exec>) projects — no hardcoded arrays.
 # Port assignments come from the SQLite database (initialised in step 9).
 #
 # Domain routing is derived from directory names + primary domain from
@@ -641,8 +643,12 @@ for _dir in "$SITES_DIR"/*/; do
     else
         # Check for a server binary using the executable name from Package.swift
         _exec_name="$(get_exec_name "$_dir")" || true
+        _binary=""
+        if [ -n "$_exec_name" ]; then
+            _binary="$(get_release_binary "$_dir" "$_exec_name")" || _binary=""
+        fi
         _has_binary=false
-        if [ -n "$_exec_name" ] && [ -f "$_dir/.build/release/$_exec_name" ]; then
+        if [ -n "$_binary" ] && [ -f "$_binary" ]; then
             _has_binary=true
         fi
 
@@ -796,8 +802,7 @@ for _dir in "$SITES_DIR"/*/; do
     [ -d "$_dir/.output" ] && continue
     _exec_name="$(get_exec_name "$_dir")" || true
     [ -z "$_exec_name" ] && continue
-    _binary="$_dir/.build/release/$_exec_name"
-    [ ! -f "$_binary" ] && continue
+    _binary="$(get_release_binary "$_dir" "$_exec_name")" || continue
 
     _port="$(db_get_port "$_name")"
     success "  Server: $_name → port $_port (binary: $_exec_name)"
@@ -967,7 +972,7 @@ for _dir in "$SITES_DIR"/*/; do
             printf "    ✓ %s → static (http://localhost/%s/)\n" "$_name" "$_name"
         fi
         _any_sites=true
-    elif [ -n "$_exec_name" ] && [ -f "$_dir/.build/release/$_exec_name" ]; then
+    elif [ -n "$_exec_name" ] && _binary="$(get_release_binary "$_dir" "$_exec_name")"; then
         _port="$(db_get_port_if_exists "$_name")"
         if [ -n "$_domain" ]; then
             printf "    ✓ %s → server :%s (http://%s/)\n" "$_name" "${_port:-?}" "$_domain"

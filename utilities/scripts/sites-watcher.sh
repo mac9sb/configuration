@@ -4,7 +4,8 @@
 #
 #  Scans ~/Developer/sites for project directories. When a project has:
 #    - .output/                        → configured as a static site
-#    - .build/release/<exec>           → configured as a server (reverse proxy)
+#    - .build/release/<exec> (or .build/<triple>/release/<exec>)
+#      → configured as a server (reverse proxy)
 #
 #  Domain routing (derived from directory names + primary domain):
 #    The primary domain is parsed from the cloudflared config comment:
@@ -215,7 +216,7 @@ for dir in "$SITES_DIR"/*/; do
         _discovered_names="${_discovered_names} ${repo}"
     else
         _exec_name="$(get_exec_name "$dir")" || true
-        if [ -n "$_exec_name" ] && [ -f "$dir/.build/release/$_exec_name" ]; then
+        if [ -n "$_exec_name" ] && _binary="$(get_release_binary "$dir" "$_exec_name")"; then
             current_state="${current_state}${repo}:server
 "
             _discovered_names="${_discovered_names} ${repo}"

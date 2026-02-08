@@ -50,7 +50,7 @@ Internet → Cloudflare Tunnel (maclong) → Apache :80 → VirtualHost routing
 - **Subdomain sites**: directory name has no dot → subdomain of primary domain (e.g. `sites/api/` → `api.maclong.dev`)
 - **Local dev**: every site is also accessible at `http://localhost/site-name/` via path-based routing
 - **Static sites**: `.output/` directory → Apache serves via `DocumentRoot` or `Alias`
-- **Server apps**: `.build/release/Application` → reverse-proxied via `mod_proxy`
+- **Server apps**: `.build/release/Application` (or `.build/<triple>/release/Application`) → reverse-proxied via `mod_proxy`
 - **State**: single SQLite database (WAL mode) at `~/Library/Application Support/com.mac9sb/state.db`
 
 ## Submodules
