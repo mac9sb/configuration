@@ -136,8 +136,8 @@ sync_cloudflared_ingress() {
     fi
 
     _primary_domain="${PRIMARY_DOMAIN:-}"
-    _custom_domains="$(printf '%s' "$current_state" | awk -F: -v primary="$_primary_domain" 'NF { if ($1 ~ /\./ && $1 != primary) print $1 }' | sort -u)"
-    _block_file="$(mktemp "/tmp/cloudflared.ingress.XXXXXX")"
+    _custom_domains="$(printf '%s' "$current_state" | awk -F: -v primary="$_primary_domain" 'NF { if ($1 ~ /\./ && (primary == "" || $1 != primary)) print $1 }' | sort -u)"
+    _block_file="$(mktemp -t cloudflared.ingress)"
     if [ -n "$_custom_domains" ]; then
         for _domain in $_custom_domains; do
             printf '  - hostname: %s\n    service: http://localhost:80\n' "$_domain" >> "$_block_file"
@@ -146,7 +146,7 @@ sync_cloudflared_ingress() {
         printf '  # (none)\n' >> "$_block_file"
     fi
 
-    _tmp_config="$(mktemp "/tmp/cloudflared.config.XXXXXX")"
+    _tmp_config="$(mktemp -t cloudflared.config)"
     awk -v begin="$INGRESS_BEGIN" -v end="$INGRESS_END" -v block="$_block_file" '
         $0 ~ begin {
             print
@@ -162,8 +162,11 @@ sync_cloudflared_ingress() {
     ' "$CLOUDFLARED_CONFIG" > "$_tmp_config"
 
     if ! cmp -s "$_tmp_config" "$CLOUDFLARED_CONFIG"; then
-        cp "$_tmp_config" "$CLOUDFLARED_CONFIG"
-        log "Updated cloudflared ingress entries for custom domains (restart cloudflared to apply)"
+        if cp "$_tmp_config" "$CLOUDFLARED_CONFIG"; then
+            log "Updated cloudflared ingress entries for custom domains (restart cloudflared to apply)"
+        else
+            log "ERROR: Failed to update cloudflared ingress entries"
+        fi
     fi
 
     rm -f "$_block_file" "$_tmp_config"
