@@ -164,16 +164,20 @@ sync_cloudflared_ingress() {
         !in_block { print }
     ' "$CLOUDFLARED_CONFIG" > "$_tmp_config"
 
+    _sync_failed=0
     if ! cmp -s "$_tmp_config" "$CLOUDFLARED_CONFIG"; then
         if cp "$_tmp_config" "$CLOUDFLARED_CONFIG"; then
-            log "Updated cloudflared ingress entries for custom domains (restart cloudflared to apply; auto-restart avoided to prevent tunnel interruption)"
+            log "Updated cloudflared ingress entries for custom domains; restart cloudflared to apply"
         else
             log "ERROR: Failed to update cloudflared ingress entries"
-            return 1
+            _sync_failed=1
         fi
     fi
 
     rm -f "$_block_file" "$_tmp_config"
+    if [ "$_sync_failed" -ne 0 ]; then
+        return 1
+    fi
 }
 
 # =============================================================================
