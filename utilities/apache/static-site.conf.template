@@ -11,6 +11,10 @@ Alias /{{SITE_NAME}}/ "{{OUTPUT_DIR}}/"
     RewriteRule ^(.+[^/])$ /{{SITE_NAME}}/$1/ [R=301,L]
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME}.html -f
+    RewriteRule ^(.+)$ /{{SITE_NAME}}/$1.html [L]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule . /{{SITE_NAME}}/index.html [L]
 </Directory>
 ErrorLog  "{{LOG_DIR}}/{{SITE_NAME}}-error.log"
