@@ -1,0 +1,370 @@
+name: Test Setup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - setup.sh
+      - utilities/**
+      - .github/workflows/test-setup.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - setup.sh
+      - utilities/**
+      - .github/workflows/test-setup.yml
+  workflow_dispatch:
+
+jobs:
+  test-setup:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # ── Run setup.sh ─────────────────────────────────────────────────────
+      - name: Run setup.sh
+        run: |
+          # Ensure $HOME matches the expected layout (~/Developer)
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          ln -sfn "$GITHUB_WORKSPACE" "$HOME/Developer"
+
+          # Touch ID step will fail in CI — stub out sudo_local template
+          sudo mkdir -p /etc/pam.d
+          sudo touch /etc/pam.d/sudo_local.template
+          echo "auth       sufficient     pam_tid.so" | sudo tee /etc/pam.d/sudo_local.template >/dev/null
+
+          # Pre-create directories setup.sh expects
+          mkdir -p "$HOME/Library/Application Support/com.mac9sb"
+          mkdir -p "$HOME/Library/Logs/com.mac9sb"
+          mkdir -p "$HOME/Library/LaunchAgents"
+          mkdir -p "$HOME/.ssh"
+          mkdir -p "$HOME/.cloudflared"
+
+          cd "$HOME/Developer"
+          sudo -E ./setup.sh
+
+      # ── Verify CLI binaries ──────────────────────────────────────────────
+      - name: Verify cloudflared binary
+        run: |
+          which cloudflared
+          cloudflared --version
+
+      - name: Verify gh binary
+        run: |
+          which gh
+          gh --version
+
+      - name: Verify copilot binary
+        run: |
+          which copilot
+          copilot --version
+
+      - name: Verify swift
+        run: |
+          which swift
+          swift --version
+
+      - name: Verify sqlite3
+        run: |
+          which sqlite3
+          sqlite3 --version
+
+      # ── Verify dotfiles ──────────────────────────────────────────────────
+      - name: Verify dotfile symlinks
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          DOTFILES_DIR="$HOME/Developer/utilities/dotfiles"
+          FAIL=0
+
+          for src in "$DOTFILES_DIR"/*; do
+            [ ! -f "$src" ] && continue
+            base="$(basename "$src")"
+            # ssh_config and settings.json handled separately
+            [ "$base" = "ssh_config" ] && continue
+            [ "$base" = "settings.json" ] && continue
+            dest="$HOME/.$base"
+
+            if [ ! -L "$dest" ]; then
+              echo "FAIL: ~/.$base is not a symlink"
+              FAIL=1
+            elif [ "$(readlink "$dest")" != "$src" ]; then
+              echo "FAIL: ~/.$base points to $(readlink "$dest"), expected $src"
+              FAIL=1
+            else
+              echo "OK: ~/.$base -> $src"
+            fi
+          done
+
+          # SSH config (nested)
+          ssh_src="$DOTFILES_DIR/ssh_config"
+          ssh_dest="$HOME/.ssh/config"
+          if [ -f "$ssh_src" ]; then
+            if [ ! -L "$ssh_dest" ]; then
+              echo "FAIL: ~/.ssh/config is not a symlink"
+              FAIL=1
+            elif [ "$(readlink "$ssh_dest")" != "$ssh_src" ]; then
+              echo "FAIL: ~/.ssh/config points to $(readlink "$ssh_dest"), expected $ssh_src"
+              FAIL=1
+            else
+              echo "OK: ~/.ssh/config -> $ssh_src"
+            fi
+          fi
+
+          exit $FAIL
+
+      # ── Verify SSH key ──────────────────────────────────────────────────
+      - name: Verify SSH key exists
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          test -f "$HOME/.ssh/id_ed25519" && echo "OK: SSH private key exists"
+          test -f "$HOME/.ssh/id_ed25519.pub" && echo "OK: SSH public key exists"
+
+      # ── Verify git hooks ─────────────────────────────────────────────────
+      - name: Verify git hooks installed
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          DEV_DIR="$HOME/Developer"
+          HOOKS_DIR="$DEV_DIR/.git/hooks"
+
+          for hook in "$DEV_DIR/utilities/githooks"/*; do
+            [ ! -f "$hook" ] && continue
+            name="$(basename "$hook")"
+            if [ ! -f "$HOOKS_DIR/$name" ]; then
+              echo "FAIL: git hook $name not installed"
+              exit 1
+            fi
+            if [ ! -x "$HOOKS_DIR/$name" ]; then
+              echo "FAIL: git hook $name not executable"
+              exit 1
+            fi
+            echo "OK: git hook $name installed and executable"
+          done
+
+      # ── Verify cloudflared config ────────────────────────────────────────
+      - name: Verify cloudflared config symlink
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          CF_SRC="$HOME/Developer/utilities/cloudflared/config.yml"
+          CF_DEST="$HOME/.cloudflared/config.yml"
+
+          if [ ! -L "$CF_DEST" ]; then
+            echo "FAIL: ~/.cloudflared/config.yml is not a symlink"
+            exit 1
+          fi
+          if [ "$(readlink "$CF_DEST")" != "$CF_SRC" ]; then
+            echo "FAIL: ~/.cloudflared/config.yml points to $(readlink "$CF_DEST"), expected $CF_SRC"
+            exit 1
+          fi
+          echo "OK: ~/.cloudflared/config.yml -> $CF_SRC"
+
+      - name: Verify cloudflared config content
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          CF_CONFIG="$HOME/.cloudflared/config.yml"
+
+          grep -q "^tunnel:" "$CF_CONFIG" && echo "OK: tunnel directive present"
+          grep -q "credentials-file:" "$CF_CONFIG" && echo "OK: credentials-file directive present"
+          grep -q "ingress:" "$CF_CONFIG" && echo "OK: ingress section present"
+          grep -q "primary-domain:" "$CF_CONFIG" && echo "OK: primary-domain comment present"
+          grep -q "sites-watcher:BEGIN" "$CF_CONFIG" && echo "OK: sites-watcher:BEGIN marker present"
+          grep -q "sites-watcher:END" "$CF_CONFIG" && echo "OK: sites-watcher:END marker present"
+          grep -q "http_status:404" "$CF_CONFIG" && echo "OK: catch-all rule present"
+
+      # ── Verify Apache configuration ──────────────────────────────────────
+      - name: Verify Apache modules enabled
+        run: |
+          HTTPD_CONF="/etc/apache2/httpd.conf"
+          FAIL=0
+          for mod in mod_proxy.so mod_proxy_http.so mod_rewrite.so mod_proxy_wstunnel.so mod_headers.so; do
+            if grep -q "^LoadModule.*${mod}" "$HTTPD_CONF"; then
+              echo "OK: $mod enabled"
+            else
+              echo "FAIL: $mod not enabled"
+              FAIL=1
+            fi
+          done
+          exit $FAIL
+
+      - name: Verify Apache ServerName set
+        run: |
+          HTTPD_CONF="/etc/apache2/httpd.conf"
+          if grep -q "^ServerName localhost" "$HTTPD_CONF"; then
+            echo "OK: ServerName set to localhost"
+          else
+            echo "FAIL: ServerName not set"
+            exit 1
+          fi
+
+      - name: Verify custom.conf included in httpd.conf
+        run: |
+          HTTPD_CONF="/etc/apache2/httpd.conf"
+          if grep -q "extra/custom.conf" "$HTTPD_CONF"; then
+            echo "OK: custom.conf included in httpd.conf"
+          else
+            echo "FAIL: custom.conf not included"
+            exit 1
+          fi
+
+      - name: Verify custom.conf exists and is valid
+        run: |
+          CUSTOM_CONF="/etc/apache2/extra/custom.conf"
+          if [ ! -f "$CUSTOM_CONF" ]; then
+            echo "FAIL: $CUSTOM_CONF does not exist"
+            exit 1
+          fi
+          echo "OK: $CUSTOM_CONF exists"
+          echo "--- Contents ---"
+          cat "$CUSTOM_CONF"
+
+      - name: Verify Apache config test passes
+        run: sudo apachectl configtest
+
+      - name: Verify Apache log directory exists
+        run: |
+          if [ -d "/var/log/apache2/sites" ]; then
+            echo "OK: Apache site log directory exists"
+          else
+            echo "FAIL: /var/log/apache2/sites missing"
+            exit 1
+          fi
+
+      # ── Verify Apache templates exist ────────────────────────────────────
+      - name: Verify Apache templates
+        run: |
+          TMPL_DIR="utilities/apache"
+          FAIL=0
+          for tmpl in static-site.conf.template static-vhost.conf.template server-site.conf.template server-vhost.conf.template; do
+            if [ -f "$TMPL_DIR/$tmpl" ]; then
+              echo "OK: $tmpl exists"
+            else
+              echo "FAIL: $tmpl missing"
+              FAIL=1
+            fi
+          done
+          exit $FAIL
+
+      # ── Verify SQLite state database ─────────────────────────────────────
+      - name: Verify state database
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          DB_PATH="$HOME/Library/Application Support/com.mac9sb/state.db"
+
+          if [ ! -f "$DB_PATH" ]; then
+            echo "FAIL: state.db not found at $DB_PATH"
+            exit 1
+          fi
+          echo "OK: state.db exists"
+
+          # Verify tables
+          FAIL=0
+          for table in sites servers config restart_queue; do
+            if sqlite3 "$DB_PATH" "SELECT name FROM sqlite_master WHERE type='table' AND name='$table';" | grep -q "$table"; then
+              echo "OK: table '$table' exists"
+            else
+              echo "FAIL: table '$table' missing"
+              FAIL=1
+            fi
+          done
+
+          # Verify WAL mode
+          mode="$(sqlite3 "$DB_PATH" "PRAGMA journal_mode;")"
+          if [ "$mode" = "wal" ]; then
+            echo "OK: WAL mode enabled"
+          else
+            echo "FAIL: journal_mode is '$mode', expected 'wal'"
+            FAIL=1
+          fi
+
+          exit $FAIL
+
+      # ── Verify launchd plists exist ──────────────────────────────────────
+      - name: Verify launchd plist symlinks
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
+          LAUNCHD_SRC="$HOME/Developer/utilities/launchd"
+          FAIL=0
+
+          for plist in server-manager.plist sites-watcher.plist backup.plist cloudflared.plist; do
+            label="com.mac9sb.${plist%.plist}"
+            dest="$LAUNCH_AGENTS/${label}.plist"
+            src="$LAUNCHD_SRC/$plist"
+
+            if [ ! -L "$dest" ]; then
+              echo "FAIL: $dest is not a symlink"
+              FAIL=1
+            elif [ "$(readlink "$dest")" != "$src" ]; then
+              echo "FAIL: $dest points to $(readlink "$dest"), expected $src"
+              FAIL=1
+            else
+              echo "OK: $dest -> $src"
+            fi
+          done
+          exit $FAIL
+
+      # ── Verify newsyslog config ──────────────────────────────────────────
+      - name: Verify newsyslog config installed
+        run: |
+          NEWSYSLOG_DEST="/etc/newsyslog.d/com.mac9sb.conf"
+          if [ ! -f "$NEWSYSLOG_DEST" ]; then
+            echo "FAIL: $NEWSYSLOG_DEST not found"
+            exit 1
+          fi
+          echo "OK: $NEWSYSLOG_DEST exists"
+          # Verify it references the expected log paths
+          grep -q "com.mac9sb" "$NEWSYSLOG_DEST" && echo "OK: references com.mac9sb logs"
+          grep -q "apache2/sites" "$NEWSYSLOG_DEST" && echo "OK: references apache site logs"
+
+      # ── Verify scripts are executable ────────────────────────────────────
+      - name: Verify utility scripts are executable
+        run: |
+          FAIL=0
+          for script in utilities/scripts/restart-server.sh utilities/scripts/server-manager.sh utilities/scripts/sites-watcher.sh utilities/scripts/backup.sh; do
+            if [ -x "$script" ]; then
+              echo "OK: $script is executable"
+            else
+              echo "FAIL: $script is not executable"
+              FAIL=1
+            fi
+          done
+          exit $FAIL
+
+      # ── Verify sudoers for apachectl ─────────────────────────────────────
+      - name: Verify passwordless sudo for apachectl
+        run: |
+          SUDOERS="/etc/sudoers.d/mac9sb"
+          if [ ! -f "$SUDOERS" ]; then
+            echo "FAIL: $SUDOERS not found"
+            exit 1
+          fi
+          if grep -q "apachectl" "$SUDOERS"; then
+            echo "OK: passwordless sudo for apachectl configured"
+          else
+            echo "FAIL: apachectl not in $SUDOERS"
+            exit 1
+          fi
+
+      # ── Verify directory structure ───────────────────────────────────────
+      - name: Verify directory structure
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          FAIL=0
+          for dir in \
+            "$HOME/Developer/sites" \
+            "$HOME/Developer/tooling" \
+            "$HOME/Developer/utilities" \
+            "$HOME/Library/Application Support/com.mac9sb" \
+            "$HOME/Library/Logs/com.mac9sb" \
+            "$HOME/Library/LaunchAgents" \
+            "$HOME/.ssh" \
+            "$HOME/.cloudflared"; do
+            if [ -d "$dir" ]; then
+              echo "OK: $dir exists"
+            else
+              echo "FAIL: $dir missing"
+              FAIL=1
+            fi
+          done
+          exit $FAIL

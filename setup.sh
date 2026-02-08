@@ -291,21 +291,25 @@ fi
 # =============================================================================
 
 info "Installing GitHub Copilot CLI"
-if ! command_exists github-copilot-cli; then
+if ! command_exists copilot; then
     COPILOT_LATEST=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/github/copilot-cli/releases/latest | sed 's|.*/||')
-    COPILOT_BIN_URL="https://github.com/github/copilot-cli/releases/download/${COPILOT_LATEST}/darwin-arm64"
+    COPILOT_TAR_URL="https://github.com/github/copilot-cli/releases/download/${COPILOT_LATEST}/copilot-darwin-arm64.tar.gz"
     info "Downloading GitHub Copilot CLI ${COPILOT_LATEST}..."
     TMPDIR_COPILOT="$(mktemp -d)"
-    if curl -sL --fail --max-time 60 "$COPILOT_BIN_URL" -o "$TMPDIR_COPILOT/github-copilot-cli"; then
-        if sudo mv "$TMPDIR_COPILOT/github-copilot-cli" /usr/local/bin/github-copilot-cli 2>/dev/null; then
-            sudo chmod +x /usr/local/bin/github-copilot-cli
-            if command_exists github-copilot-cli; then
-                success "GitHub Copilot CLI installed: $(github-copilot-cli --version 2>&1 | head -1 || echo 'installed')"
+    if curl -sL --fail --max-time 60 "$COPILOT_TAR_URL" -o "$TMPDIR_COPILOT/copilot.tar.gz"; then
+        if tar -xzf "$TMPDIR_COPILOT/copilot.tar.gz" -C "$TMPDIR_COPILOT" 2>/dev/null; then
+            if sudo mv "$TMPDIR_COPILOT/copilot" /usr/local/bin/copilot 2>/dev/null; then
+                sudo chmod +x /usr/local/bin/copilot
+                if command_exists copilot; then
+                    success "GitHub Copilot CLI installed: $(copilot --version 2>&1 | head -1 || echo 'installed')"
+                else
+                    warn "Copilot CLI binary moved but not found on PATH"
+                fi
             else
-                warn "Copilot CLI binary moved but not found on PATH"
+                warn "Failed to move copilot binary to /usr/local/bin — install manually later"
             fi
         else
-            warn "Failed to move copilot binary to /usr/local/bin — install manually later"
+            warn "Failed to extract Copilot CLI tarball — install manually later"
         fi
     else
         warn "Failed to download Copilot CLI — install manually later"
