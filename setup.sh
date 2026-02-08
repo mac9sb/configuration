@@ -724,8 +724,9 @@ else
     success "  ~/.cloudflared/config.yml → $_tunnel_config"
 fi
 
-# Ensure ~/.cloudflared is owned by the real user (setup runs as sudo)
+# Ensure ~/.cloudflared and ~/.ssh are owned by the real user (setup runs as sudo)
 chown -R "${SUDO_USER:-$(logname)}:staff" "$HOME/.cloudflared"
+[ -d "$HOME/.ssh" ] && chown -R "${SUDO_USER:-$(logname)}:staff" "$HOME/.ssh"
 
 # Check if credentials are already in place
 if [ -f "$HOME/.cloudflared/maclong.json" ]; then
