@@ -123,6 +123,12 @@ resolve_domain() {
     esac
 }
 
+# Extract custom domain names from the current state list.
+extract_custom_domains() {
+    _primary="$1"
+    printf '%s' "$current_state" | awk -F: -v primary="$_primary" 'NF { if ($1 ~ /\./ && (primary == "" || $1 != primary)) print $1 }' | sort -u
+}
+
 # =============================================================================
 #  Sync cloudflared ingress entries for custom domains
 # =============================================================================
@@ -130,15 +136,17 @@ resolve_domain() {
 sync_cloudflared_ingress() {
     [ ! -f "$CLOUDFLARED_CONFIG" ] && return 0
 
-    if ! grep -q "$INGRESS_BEGIN" "$CLOUDFLARED_CONFIG" || ! grep -q "$INGRESS_END" "$CLOUDFLARED_CONFIG"; then
-        log "WARN: cloudflared config missing ingress markers — skipping custom domain sync"
+    _begin_line="$(grep -n "$INGRESS_BEGIN" "$CLOUDFLARED_CONFIG" | head -1 | cut -d: -f1)"
+    _end_line="$(grep -n "$INGRESS_END" "$CLOUDFLARED_CONFIG" | head -1 | cut -d: -f1)"
+    if [ -z "$_begin_line" ] || [ -z "$_end_line" ] || [ "$_end_line" -lt "$_begin_line" ]; then
+        log "WARN: cloudflared config ingress markers missing or out of order — skipping custom domain sync"
         return 0
     fi
 
     _primary_domain="${PRIMARY_DOMAIN:-}"
     # Directory names with dots represent custom domains; subdomains never include dots in this setup.
     # Filter criteria: (1) name contains a dot, (2) skip the primary domain when configured.
-    _custom_domains="$(printf '%s' "$current_state" | awk -F: -v primary="$_primary_domain" 'NF { if ($1 ~ /\./ && (primary == "" || $1 != primary)) print $1 }' | sort -u)"
+    _custom_domains="$(extract_custom_domains "$_primary_domain")"
     _block_file="$(mktemp "${TMPDIR:-/tmp}/cloudflared.ingress.XXXXXX")"
     if [ -n "$_custom_domains" ]; then
         for _domain in $_custom_domains; do
@@ -167,7 +175,8 @@ sync_cloudflared_ingress() {
     _sync_failed=0
     if ! cmp -s "$_tmp_config" "$CLOUDFLARED_CONFIG"; then
         if cp "$_tmp_config" "$CLOUDFLARED_CONFIG"; then
-            log "Updated cloudflared ingress entries for custom domains; restart cloudflared manually to apply"
+            log "Updated cloudflared ingress entries for custom domains; restart cloudflared to apply"
+            log "Restart cloudflared: launchctl kickstart -k gui/$(id -u)/com.mac9sb.cloudflared"
         else
             log "ERROR: Failed to update cloudflared ingress entries"
             _sync_failed=1
