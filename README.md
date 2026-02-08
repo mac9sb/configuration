@@ -126,7 +126,7 @@ Custom domains need a DNS route to the tunnel; the cloudflared ingress entry is 
    git submodule add https://github.com/mac9sb/cool-app.git sites/cool-app.com
    ```
 
-2. The sites-watcher updates `utilities/cloudflared/config.yml` automatically (no manual edits needed).
+2. sites-watcher automatically updates `utilities/cloudflared/config.yml` (no manual edits needed).
 
 3. Route DNS to the tunnel:
 
