@@ -304,7 +304,8 @@ else
                         if [ -d "$_zed_mount/Zed.app" ]; then
                             _codesign_ok=true
                             _spctl_ok=true
-                            if ! codesign --verify --deep --strict --verbose=2 "$_zed_mount/Zed.app" >"$_zed_verify_log" 2>&1; then
+                            : > "$_zed_verify_log"
+                            if ! codesign --verify --deep --strict --verbose=2 "$_zed_mount/Zed.app" >>"$_zed_verify_log" 2>&1; then
                                 _codesign_ok=false
                             fi
                             if ! spctl --assess --type execute "$_zed_mount/Zed.app" >>"$_zed_verify_log" 2>&1; then
@@ -325,7 +326,7 @@ else
                                 fi
                                 warn "Zed signature verification failed — install manually later"
                                 printf "  Verification output:\n"
-                                cat "$_zed_verify_log"
+                                sed 's/^/  /' "$_zed_verify_log"
                             fi
                         else
                             warn "Zed app not found in DMG — install manually later"
@@ -337,7 +338,7 @@ else
                 else
                     warn "Downloaded Zed DMG failed verification — install manually later"
                     printf "  Verification output:\n"
-                    cat "$_zed_dmg_verify_log"
+                    sed 's/^/  /' "$_zed_dmg_verify_log"
                 fi
             else
                 warn "Failed to download Zed — install manually later"
@@ -348,8 +349,8 @@ else
             ;;
     esac
 
-    _zed_cleanup
     trap - EXIT
+    _zed_cleanup
 fi
 
 # =============================================================================
