@@ -49,6 +49,8 @@ sudo ./setup.sh
 
 ## What Setup Does
 
+There are no hardcoded repo arrays — everything is derived from `.gitmodules` and filesystem state (`.output/` = static, `.build/release/Application` = server).
+
 | Step | Action |
 |------|--------|
 | 1 | Enable Touch ID for sudo |
@@ -57,17 +59,17 @@ sudo ./setup.sh
 | 4 | Install Xcode CLI tools & verify Swift |
 | 5 | Install `cloudflared` (arm64 `.pkg`) |
 | 6 | Install `gh` CLI (arm64 `.zip`) |
-| 7 | Initialize git submodules |
-| 8 | Build Swift projects (`swift build -c release`) |
-| 9 | Configure Apache (modules, `custom.conf`) |
-| 10 | Create launchd agents for server binaries |
+| 7 | Initialize git submodules (`git submodule update --init --recursive`) |
+| 8 | Build all Swift packages found under `sites/` and `tooling/` |
+| 9 | Configure Apache by scanning `sites/` for `.output` and `.build/release/Application` |
+| 10 | Create launchd agents for detected server binaries |
 | 11 | Create file watchers for binary hot-reload |
 | 12 | Install sites-watcher launchd agent |
 | 13 | Test & restart Apache |
 
 ## Submodules
 
-Nested repositories are managed as git submodules rather than standalone clones.
+Nested repositories are managed as git submodules — they are the **only** source of truth for what repos exist. There are no arrays to maintain in `setup.sh`. Adding or removing a submodule is all you need to do; the setup script and sites-watcher discover everything dynamically.
 
 ### Adding a new submodule
 
@@ -83,7 +85,7 @@ git submodule add https://github.com/mac9sb/<repo>.git tooling/<repo>
 git commit -m "Add <repo> submodule"
 ```
 
-The **sites-watcher** will automatically detect new sites and configure Apache + launchd agents when `.output/` or `.build/release/Application` appears.
+The **sites-watcher** will automatically detect new sites and configure Apache + launchd agents when `.output/` or `.build/release/Application` appears. No further configuration needed.
 
 ### Updating submodules
 
@@ -93,18 +95,6 @@ git submodule update --remote --merge
 
 # Pull latest for a specific submodule
 git -C sites/portfolio pull origin main
-```
-
-### Cloning on a new machine
-
-```sh
-git clone --recursive https://github.com/mac9sb/server.git ~/Developer
-```
-
-If already cloned without `--recursive`:
-
-```sh
-git submodule update --init --recursive
 ```
 
 ## Architecture
@@ -119,8 +109,9 @@ Internet → Cloudflare Tunnel → Apache :80 → routes internally
               from .output   :8000)        :8001)
 ```
 
-- **Static sites**: Apache serves files directly from `.output/` via `Alias`
-- **Server apps**: Apache reverse-proxies to `localhost:8000+` via `mod_proxy`
+- **Static sites**: Detected by `.output/` directory; Apache serves files directly via `Alias`
+- **Server apps**: Detected by `.build/release/Application` binary; Apache reverse-proxies to `localhost:8000+` via `mod_proxy`
+- **Classification**: Automatic — if a built binary produces `.output` when run, it's static; otherwise it's a server
 - **HTTPS**: Handled by Cloudflare; local traffic is HTTP on `:80`
 
 ## Templates
@@ -164,7 +155,7 @@ Each server site gets:
 
 Ports are assigned deterministically starting at `8000` and persisted in `.watchers/port-assignments`.
 
-## Cloudflare Tunnel
+k# Cloudflare Tunnel
 
 Tunnel routes are managed remotely via the Cloudflare dashboard, not local config files.
 
@@ -202,11 +193,3 @@ git submodule update --remote --merge
 cd ~/Developer/sites/<name>
 swift build -c release
 ```
-
-## Teardown
-
-```sh
-sudo ./uninstall.sh
-```
-
-This removes launchd agents, Apache custom config, and restores `httpd.conf` from backup. Submodule directories and dotfile sources are preserved.

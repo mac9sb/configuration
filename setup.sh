@@ -11,17 +11,19 @@ set -e
 #    - SSH key generation
 #    - Swift (via Xcode CLI tools)
 #    - CLI tooling (cloudflared, gh)
-#    - Git submodule initialization (sites + tooling)
+#    - Git submodule initialization
 #    - Building Swift projects
 #    - Apache with mod_proxy/mod_rewrite + per-site config
 #    - launchd agents for server binaries (with crash retry + notification)
 #    - File watchers to restart servers on binary rebuild
 #    - Sites watcher launchd agent for auto-detection
 #    - Cloudflare tunnel integration
+#
+#  Repos are managed entirely as git submodules. No hardcoded arrays —
+#  everything is derived from .gitmodules and filesystem state.
 # =============================================================================
 
 GITHUB_USER="mac9sb"
-GIT_NAME="Mac"
 GIT_EMAIL="maclong9@icloud.com"
 
 DEV_DIR="$HOME/Developer"
@@ -40,11 +42,6 @@ APACHE_TMPL_DIR="$UTILITIES_DIR/apache"
 LAUNCHD_TMPL_DIR="$UTILITIES_DIR/launchd"
 SCRIPTS_TMPL_DIR="$UTILITIES_DIR/scripts"
 DOTFILES_DIR="$UTILITIES_DIR/dotfiles"
-
-# --- Site arrays (add new entries here; repos must exist as submodules) ------
-STATIC_SITES="portfolio"
-SERVER_SITES=""
-TOOLING_REPOS="list web-ui"
 
 # --- Port allocation ----------------------------------------------------------
 SERVER_PORT_START=8000
@@ -103,8 +100,6 @@ fi
 
 info "Step 2/${TOTAL_STEPS}: Symlinking dotfiles"
 
-# Map: source file in utilities/dotfiles → target in $HOME
-# Files without a dot prefix get one added automatically.
 for _dotfile in zshrc vimrc gitignore gitconfig; do
     _src="$DOTFILES_DIR/$_dotfile"
     _dest="$HOME/.${_dotfile}"
@@ -117,7 +112,6 @@ for _dotfile in zshrc vimrc gitignore gitconfig; do
     if [ -L "$_dest" ] && [ "$(readlink "$_dest")" = "$_src" ]; then
         success "  ~/.${_dotfile} already symlinked"
     else
-        # Back up existing file if it's not already a symlink to us
         if [ -e "$_dest" ] && [ ! -L "$_dest" ]; then
             mv "$_dest" "${_dest}.bak.$(date +%Y%m%d%H%M%S)"
             warn "  Backed up existing ~/.${_dotfile}"
@@ -258,33 +252,17 @@ mkdir -p "$SITES_DIR" "$TOOLING_DIR" "$WATCHER_DIR" "$LAUNCH_AGENTS_DIR"
 
 cd "$DEV_DIR"
 
-# Initialize submodules and update (clone contents)
 if [ -f "$DEV_DIR/.gitmodules" ]; then
     git submodule update --init --recursive 2>/dev/null
     success "All submodules initialized"
+
+    # Report what was found
+    git submodule foreach --quiet 'printf "  %s\n" "$sm_path"' | while read -r _path; do
+        success "$_path"
+    done
 else
-    warn "No .gitmodules found — submodules must be added with 'git submodule add'"
-    warn "  Example: git submodule add https://github.com/${GITHUB_USER}/portfolio.git sites/portfolio"
+    warn "No .gitmodules found — add submodules with 'git submodule add'"
 fi
-
-# Verify expected submodule directories exist
-for repo in $STATIC_SITES $SERVER_SITES; do
-    if [ -d "$SITES_DIR/$repo" ]; then
-        success "  sites/$repo present"
-    else
-        warn "  sites/$repo missing — add submodule:"
-        warn "    git submodule add https://github.com/${GITHUB_USER}/${repo}.git sites/${repo}"
-    fi
-done
-
-for repo in $TOOLING_REPOS; do
-    if [ -d "$TOOLING_DIR/$repo" ]; then
-        success "  tooling/$repo present"
-    else
-        warn "  tooling/$repo missing — add submodule:"
-        warn "    git submodule add https://github.com/${GITHUB_USER}/${repo}.git tooling/${repo}"
-    fi
-done
 
 # =============================================================================
 #  Step 8 — Build Swift projects
@@ -292,35 +270,42 @@ done
 
 info "Step 8/${TOTAL_STEPS}: Building Swift projects"
 
-# Build tooling (these produce CLI binaries used via PATH)
-for repo in $TOOLING_REPOS; do
-    _dir="$TOOLING_DIR/$repo"
+# Build any Swift package found under tooling/
+for _dir in "$TOOLING_DIR"/*/; do
+    [ ! -d "$_dir" ] && continue
+    _name="$(basename "$_dir")"
     if [ -f "$_dir/Package.swift" ]; then
-        info "  Building tooling: $repo..."
+        info "  Building tooling: $_name..."
         (cd "$_dir" && swift build -c release 2>&1 | tail -1)
-        success "  $repo built"
+        success "  $_name built"
     fi
 done
 
-# Build static sites (build + run binary to generate .output)
-for repo in $STATIC_SITES; do
-    _dir="$SITES_DIR/$repo"
+# Build any Swift package found under sites/
+# After building, determine type by running the binary once — if it exits
+# cleanly and produces .output, it's static. Otherwise it's a server that
+# launchd will manage.
+for _dir in "$SITES_DIR"/*/; do
+    [ ! -d "$_dir" ] && continue
+    _name="$(basename "$_dir")"
     if [ -f "$_dir/Package.swift" ]; then
-        info "  Building static site: $repo..."
+        info "  Building site: $_name..."
         (cd "$_dir" && swift build -c release 2>&1 | tail -1)
-        success "  $repo built"
-        info "  Generating static output for $repo..."
-        (cd "$_dir" && .build/release/Application 2>/dev/null) || true
-    fi
-done
+        success "  $_name built"
 
-# Build server sites (build only — launchd will run them)
-for repo in $SERVER_SITES; do
-    _dir="$SITES_DIR/$repo"
-    if [ -f "$_dir/Package.swift" ]; then
-        info "  Building server site: $repo..."
-        (cd "$_dir" && swift build -c release 2>&1 | tail -1)
-        success "  $repo built"
+        # If no .output exists yet but the binary is present, try running it
+        # once to see if it generates static output (exits quickly).
+        _binary="$_dir/.build/release/Application"
+        if [ ! -d "$_dir/.output" ] && [ -f "$_binary" ]; then
+            info "  Running $_name to check for static output..."
+            (cd "$_dir" && .build/release/Application 2>/dev/null) || true
+        fi
+
+        if [ -d "$_dir/.output" ]; then
+            success "  $_name → static site (.output generated)"
+        elif [ -f "$_binary" ]; then
+            success "  $_name → server binary (launchd will manage)"
+        fi
     fi
 done
 
@@ -330,7 +315,6 @@ done
 
 info "Step 9/${TOTAL_STEPS}: Configuring Apache"
 
-# Enable required modules in httpd.conf
 enable_module() {
     _mod="$1"
     if grep -q "^#.*$_mod" "$HTTPD_CONF"; then
@@ -347,7 +331,6 @@ enable_module "mod_proxy_http.so"
 enable_module "mod_rewrite.so"
 enable_module "mod_proxy_wstunnel.so"
 
-# Include custom.conf in httpd.conf if not already present
 if ! grep -q "extra/custom.conf" "$HTTPD_CONF"; then
     printf "\n# Developer custom site configuration\nInclude /private/etc/apache2/extra/custom.conf\n" \
         | sudo tee -a "$HTTPD_CONF" >/dev/null
@@ -356,46 +339,42 @@ else
     success "  custom.conf Include already in httpd.conf"
 fi
 
-# Create log directory
 sudo mkdir -p "$LOG_DIR"
 sudo chown root:wheel "$LOG_DIR"
 
-# Build the custom.conf from templates
+# Build custom.conf by scanning sites/ for static (.output) and server
+# (.build/release/Application) projects — no hardcoded arrays.
 server_port=$SERVER_PORT_START
 
 _conf_file="$(mktemp)"
 cat "$APACHE_TMPL_DIR/custom.conf.header" > "$_conf_file"
 printf '\n' >> "$_conf_file"
 
-for repo in $STATIC_SITES; do
-    _dir="$SITES_DIR/$repo"
+for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
-    _output_dir="$_dir/.output"
+    _name="$(basename "$_dir")"
 
-    render_template "$APACHE_TMPL_DIR/static-site.conf.tmpl" \
-        "SITE_NAME=$repo" \
-        "OUTPUT_DIR=$_output_dir" \
-        "LOG_DIR=$LOG_DIR" \
-        >> "$_conf_file"
-    printf '\n' >> "$_conf_file"
+    if [ -d "$_dir/.output" ]; then
+        _output_dir="$_dir/.output"
+        render_template "$APACHE_TMPL_DIR/static-site.conf.tmpl" \
+            "SITE_NAME=$_name" \
+            "OUTPUT_DIR=$_output_dir" \
+            "LOG_DIR=$LOG_DIR" \
+            >> "$_conf_file"
+        printf '\n' >> "$_conf_file"
+        chmod -R o+r "$_output_dir" 2>/dev/null || true
+        success "  Configured static site: /$_name → $_output_dir"
 
-    chmod -R o+r "$_output_dir" 2>/dev/null || true
-    success "  Configured static site: /$repo → $_output_dir"
-done
-
-for repo in $SERVER_SITES; do
-    _dir="$SITES_DIR/$repo"
-    [ ! -d "$_dir" ] && continue
-
-    render_template "$APACHE_TMPL_DIR/server-site.conf.tmpl" \
-        "SITE_NAME=$repo" \
-        "PORT=$server_port" \
-        "LOG_DIR=$LOG_DIR" \
-        >> "$_conf_file"
-    printf '\n' >> "$_conf_file"
-
-    success "  Configured proxy site: /$repo → http://127.0.0.1:$server_port"
-    server_port=$((server_port + 1))
+    elif [ -f "$_dir/.build/release/Application" ]; then
+        render_template "$APACHE_TMPL_DIR/server-site.conf.tmpl" \
+            "SITE_NAME=$_name" \
+            "PORT=$server_port" \
+            "LOG_DIR=$LOG_DIR" \
+            >> "$_conf_file"
+        printf '\n' >> "$_conf_file"
+        success "  Configured proxy site: /$_name → http://127.0.0.1:$server_port"
+        server_port=$((server_port + 1))
+    fi
 done
 
 sudo cp "$_conf_file" "$CUSTOM_CONF"
@@ -410,42 +389,43 @@ info "Step 10/${TOTAL_STEPS}: Creating launchd agents for server binaries"
 
 server_port=$SERVER_PORT_START
 
-for repo in $SERVER_SITES; do
-    _dir="$SITES_DIR/$repo"
+for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
-
+    _name="$(basename "$_dir")"
     _binary="$_dir/.build/release/Application"
-    _label="com.${GITHUB_USER}.${repo}"
-    _crash_file="$WATCHER_DIR/${repo}.crash_count"
 
-    if [ -f "$_binary" ]; then
-        # Render crash-guarded wrapper from template
-        _wrapper="$WATCHER_DIR/${repo}-run.sh"
-        render_template "$SCRIPTS_TMPL_DIR/crash-wrapper.sh.tmpl" \
-            "SITE_NAME=$repo" \
-            "CRASH_COUNT_FILE=$_crash_file" \
-            "MAX_RETRIES=$MAX_CRASH_RETRIES" \
-            "PORT=$server_port" \
-            "BINARY_PATH=$_binary" \
-            "WATCHER_DIR=$WATCHER_DIR" \
-            > "$_wrapper"
-        chmod +x "$_wrapper"
+    # Only server sites (have binary but no .output)
+    [ -d "$_dir/.output" ] && continue
+    [ ! -f "$_binary" ] && continue
 
-        # Render launchd plist from template
-        _plist="${LAUNCH_AGENTS_DIR}/${_label}.plist"
-        render_template "$LAUNCHD_TMPL_DIR/server-agent.plist.tmpl" \
-            "LABEL=$_label" \
-            "WRAPPER_SCRIPT=$_wrapper" \
-            "LOG_FILE=$WATCHER_DIR/${repo}.log" \
-            "ERROR_LOG_FILE=$WATCHER_DIR/${repo}.error.log" \
-            > "$_plist"
+    _label="com.${GITHUB_USER}.${_name}"
+    _crash_file="$WATCHER_DIR/${_name}.crash_count"
 
-        launchctl bootout "gui/${UID_NUM}/${_label}" 2>/dev/null || true
-        launchctl bootstrap "gui/${UID_NUM}" "$_plist" 2>/dev/null || launchctl load "$_plist" 2>/dev/null || true
-        success "  launchd agent created and loaded: $_label"
-    else
-        warn "  Binary not found for $repo at $_binary — skipping launchd agent"
-    fi
+    # Render crash-guarded wrapper from template
+    _wrapper="$WATCHER_DIR/${_name}-run.sh"
+    render_template "$SCRIPTS_TMPL_DIR/crash-wrapper.sh.tmpl" \
+        "SITE_NAME=$_name" \
+        "CRASH_COUNT_FILE=$_crash_file" \
+        "MAX_RETRIES=$MAX_CRASH_RETRIES" \
+        "PORT=$server_port" \
+        "BINARY_PATH=$_binary" \
+        "WATCHER_DIR=$WATCHER_DIR" \
+        > "$_wrapper"
+    chmod +x "$_wrapper"
+
+    # Render launchd plist from template
+    _plist="${LAUNCH_AGENTS_DIR}/${_label}.plist"
+    render_template "$LAUNCHD_TMPL_DIR/server-agent.plist.tmpl" \
+        "LABEL=$_label" \
+        "WRAPPER_SCRIPT=$_wrapper" \
+        "LOG_FILE=$WATCHER_DIR/${_name}.log" \
+        "ERROR_LOG_FILE=$WATCHER_DIR/${_name}.error.log" \
+        > "$_plist"
+
+    launchctl bootout "gui/${UID_NUM}/${_label}" 2>/dev/null || true
+    launchctl bootstrap "gui/${UID_NUM}" "$_plist" 2>/dev/null || launchctl load "$_plist" 2>/dev/null || true
+    success "  launchd agent created and loaded: $_label (port $server_port)"
+
     server_port=$((server_port + 1))
 done
 
@@ -457,45 +437,46 @@ info "Step 11/${TOTAL_STEPS}: Setting up file watchers for server binaries"
 
 server_port=$SERVER_PORT_START
 
-for repo in $SERVER_SITES; do
-    _dir="$SITES_DIR/$repo"
+for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
-
+    _name="$(basename "$_dir")"
     _binary="$_dir/.build/release/Application"
-    _label="com.${GITHUB_USER}.${repo}"
+
+    # Only server sites (have binary but no .output)
+    [ -d "$_dir/.output" ] && continue
+    [ ! -f "$_binary" ] && continue
+
+    _label="com.${GITHUB_USER}.${_name}"
     _watcher_label="${_label}.watcher"
-    _crash_file="$WATCHER_DIR/${repo}.crash_count"
+    _crash_file="$WATCHER_DIR/${_name}.crash_count"
     _plist="${LAUNCH_AGENTS_DIR}/${_label}.plist"
 
-    if [ -f "$_binary" ]; then
-        # Render restart script from template
-        _restart_script="$WATCHER_DIR/${repo}-restart.sh"
-        render_template "$SCRIPTS_TMPL_DIR/restart-server.sh.tmpl" \
-            "SITE_NAME=$repo" \
-            "CRASH_COUNT_FILE=$_crash_file" \
-            "WATCHER_DIR=$WATCHER_DIR" \
-            "UID_NUM=$UID_NUM" \
-            "SERVER_LABEL=$_label" \
-            "SERVER_PLIST=$_plist" \
-            > "$_restart_script"
-        chmod +x "$_restart_script"
+    # Render restart script from template
+    _restart_script="$WATCHER_DIR/${_name}-restart.sh"
+    render_template "$SCRIPTS_TMPL_DIR/restart-server.sh.tmpl" \
+        "SITE_NAME=$_name" \
+        "CRASH_COUNT_FILE=$_crash_file" \
+        "WATCHER_DIR=$WATCHER_DIR" \
+        "UID_NUM=$UID_NUM" \
+        "SERVER_LABEL=$_label" \
+        "SERVER_PLIST=$_plist" \
+        > "$_restart_script"
+    chmod +x "$_restart_script"
 
-        # Render watcher plist from template
-        _watcher_plist="${LAUNCH_AGENTS_DIR}/${_watcher_label}.plist"
-        render_template "$LAUNCHD_TMPL_DIR/watcher-agent.plist.tmpl" \
-            "LABEL=$_watcher_label" \
-            "RESTART_SCRIPT=$_restart_script" \
-            "BINARY_PATH=$_binary" \
-            "LOG_FILE=$WATCHER_DIR/${repo}-watcher.log" \
-            "ERROR_LOG_FILE=$WATCHER_DIR/${repo}-watcher.error.log" \
-            > "$_watcher_plist"
+    # Render watcher plist from template
+    _watcher_plist="${LAUNCH_AGENTS_DIR}/${_watcher_label}.plist"
+    render_template "$LAUNCHD_TMPL_DIR/watcher-agent.plist.tmpl" \
+        "LABEL=$_watcher_label" \
+        "RESTART_SCRIPT=$_restart_script" \
+        "BINARY_PATH=$_binary" \
+        "LOG_FILE=$WATCHER_DIR/${_name}-watcher.log" \
+        "ERROR_LOG_FILE=$WATCHER_DIR/${_name}-watcher.error.log" \
+        > "$_watcher_plist"
 
-        launchctl bootout "gui/${UID_NUM}/${_watcher_label}" 2>/dev/null || true
-        launchctl bootstrap "gui/${UID_NUM}" "$_watcher_plist" 2>/dev/null || launchctl load "$_watcher_plist" 2>/dev/null || true
-        success "  Watcher agent created: $_watcher_label → watches $_binary"
-    else
-        warn "  Skipping watcher for $repo — binary not found"
-    fi
+    launchctl bootout "gui/${UID_NUM}/${_watcher_label}" 2>/dev/null || true
+    launchctl bootstrap "gui/${UID_NUM}" "$_watcher_plist" 2>/dev/null || launchctl load "$_watcher_plist" 2>/dev/null || true
+    success "  Watcher agent created: $_watcher_label → watches $_binary"
+
     server_port=$((server_port + 1))
 done
 
@@ -535,10 +516,12 @@ fi
 info "Step 13/${TOTAL_STEPS}: Testing and restarting Apache"
 
 # Set permissions on all static site output directories
-for repo in $STATIC_SITES; do
-    _dir="$SITES_DIR/$repo"
-    chmod -R o+r "$_dir/.output" 2>/dev/null || true
-    chmod o+x "$DEV_DIR" "$SITES_DIR" "$_dir" "$_dir/.output" 2>/dev/null || true
+for _dir in "$SITES_DIR"/*/; do
+    [ ! -d "$_dir" ] && continue
+    if [ -d "$_dir/.output" ]; then
+        chmod -R o+r "$_dir/.output" 2>/dev/null || true
+        chmod o+x "$DEV_DIR" "$SITES_DIR" "$_dir" "$_dir/.output" 2>/dev/null || true
+    fi
 done
 
 if sudo apachectl configtest 2>&1; then
@@ -565,14 +548,39 @@ printf "    ~/.gitconfig → utilities/dotfiles/gitconfig\n"
 printf "    ~/.gitignore → utilities/dotfiles/gitignore\n"
 printf "    ~/.ssh/config → utilities/dotfiles/ssh_config\n"
 printf "\n"
-printf "  \033[1mURLs:\033[0m\n"
+printf "  \033[1mSites detected:\033[0m\n"
 
-for repo in $STATIC_SITES; do
-    printf "    http://localhost/%s/  (static)\n" "$repo"
+_any_sites=false
+for _dir in "$SITES_DIR"/*/; do
+    [ ! -d "$_dir" ] && continue
+    _name="$(basename "$_dir")"
+    if [ -d "$_dir/.output" ]; then
+        printf "    http://localhost/%s/  (static)\n" "$_name"
+        _any_sites=true
+    elif [ -f "$_dir/.build/release/Application" ]; then
+        printf "    http://localhost/%s/  (server → proxy)\n" "$_name"
+        _any_sites=true
+    else
+        printf "    %s  (not yet built)\n" "$_name"
+        _any_sites=true
+    fi
 done
-for repo in $SERVER_SITES; do
-    printf "    http://localhost/%s/  (server binary via proxy)\n" "$repo"
+if [ "$_any_sites" = false ]; then
+    printf "    (none — add submodules under sites/)\n"
+fi
+
+printf "\n"
+printf "  \033[1mTooling detected:\033[0m\n"
+_any_tooling=false
+for _dir in "$TOOLING_DIR"/*/; do
+    [ ! -d "$_dir" ] && continue
+    _name="$(basename "$_dir")"
+    printf "    %s\n" "$_name"
+    _any_tooling=true
 done
+if [ "$_any_tooling" = false ]; then
+    printf "    (none — add submodules under tooling/)\n"
+fi
 
 printf "\n"
 printf "  \033[1mLogs:\033[0m            %s/<site>-{error,access}.log\n" "$LOG_DIR"
@@ -590,7 +598,8 @@ printf "    Sites watcher auto-detects new projects every 30s\n"
 printf "    For HTTPS, rely on Cloudflare or configure local SSL\n"
 printf "\n"
 printf "  \033[1mSubmodules:\033[0m\n"
-printf "    Repos are managed as git submodules. To add a new site:\n"
+printf "    Repos are managed as git submodules — no config arrays needed.\n"
+printf "    To add a new site:\n"
 printf "      cd %s\n" "$DEV_DIR"
 printf "      git submodule add https://github.com/%s/<repo>.git sites/<repo>\n" "$GITHUB_USER"
 printf "    The sites-watcher will auto-detect and configure it.\n"
