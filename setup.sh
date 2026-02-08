@@ -285,7 +285,7 @@ case "$(uname -m)" in
     *) ZED_ASSET="" ;;
 esac
 if [ -n "$ZED_ASSET" ]; then
-    ZED_DMG_URL="https://zed.dev/download-success?asset=${ZED_ASSET}&version=${ZED_DMG_VERSION}&channel=stable" # direct stable DMG
+    ZED_DMG_URL="https://zed.dev/download-success?asset=${ZED_ASSET}&version=${ZED_DMG_VERSION}&channel=stable" # direct versioned stable DMG
 fi
 
 if [ -d "$ZED_APP" ]; then
