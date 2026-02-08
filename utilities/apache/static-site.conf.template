@@ -1,5 +1,6 @@
 # --- {{SITE_NAME}} (static, served from .output) ---
-Alias /{{SITE_NAME}} "{{OUTPUT_DIR}}"
+RedirectMatch 301 ^/{{SITE_NAME}}$ /{{SITE_NAME}}/
+Alias /{{SITE_NAME}}/ "{{OUTPUT_DIR}}/"
 <Directory "{{OUTPUT_DIR}}">
     Options Indexes FollowSymLinks MultiViews
     AllowOverride All
