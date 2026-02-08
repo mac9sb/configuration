@@ -293,7 +293,7 @@ elif [ "$ZED_SUPPORTED" = "false" ]; then
     warn "Skipping Zed install for unsupported architecture"
 else
     TMPDIR_ZED="$(mktemp -d)"
-    ZED_DMG_URL="https://zed.dev/download-success?asset=${ZED_ASSET}&version=${ZED_DMG_VERSION}&channel=stable" # download-success endpoint serves the version+arch stable DMG
+    ZED_DMG_URL="https://github.com/zed-industries/zed/releases/download/v${ZED_DMG_VERSION}/${ZED_ASSET}" # direct GitHub release asset
     _zed_cleanup() {
         [ -d "$TMPDIR_ZED" ] && rm -rf "$TMPDIR_ZED"
     }
