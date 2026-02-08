@@ -1,15 +1,12 @@
-[submodule "sites/portfolio"]
-	path = sites/portfolio
-	url = https://github.com/mac9sb/portfolio.git
 [submodule "tooling/list"]
 	path = tooling/list
 	url = https://github.com/mac9sb/list.git
 [submodule "tooling/web-ui"]
 	path = tooling/web-ui
 	url = https://github.com/mac9sb/web-ui.git
-[submodule "tsx"]
-	path = tsx
-	url = https://github.com/mac9sb/pulseboard.git
 [submodule "sites/todos-auth-fluent"]
 	path = sites/todos-auth-fluent
 	url = https://github.com/mac9sb/todos-auth-fluent.git
+[submodule "sites/maclong.dev"]
+	path = sites/maclong.dev
+	url = https://github.com/mac9sb/portfolio.git

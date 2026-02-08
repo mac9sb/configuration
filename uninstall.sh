@@ -6,14 +6,17 @@ set -e
 #  Author: Mac (maclong9)
 #
 #  This script reverses the setup performed by setup.sh:
-#    - Unloads and removes launchd agents
+#    - Stops server-manager and unloads all symlinked launchd agents
 #    - Removes Apache custom config and restores httpd.conf backup
-#    - Removes watcher runtime state
+#    - Removes SQLite state database, backups, and logs from ~/Library/
 #    - Removes dotfile symlinks (preserves source files in utilities/)
-#    - Optionally removes installed CLI tools (cloudflared, gh)
+#    - Removes Cloudflare tunnel config symlink (preserves credentials)
+#    - Removes log rotation config (newsyslog)
+#    - Removes git hooks
+#    - Optionally removes installed CLI tools (cloudflared)
 #
 #  Usage: sudo ./uninstall.sh [--all]
-#    --all    Also remove cloudflared, gh, and Xcode CLI tools
+#    --all    Also remove cloudflared and Xcode CLI tools
 # =============================================================================
 
 GITHUB_USER="mac9sb"
@@ -21,11 +24,12 @@ DEV_DIR="$HOME/Developer"
 SITES_DIR="$DEV_DIR/sites"
 UTILITIES_DIR="$DEV_DIR/utilities"
 DOTFILES_DIR="$UTILITIES_DIR/dotfiles"
-WATCHER_DIR="$DEV_DIR/.watchers"
+STATE_DIR="$HOME/Library/Application Support/com.mac9sb"
+APP_LOG_DIR="$HOME/Library/Logs/com.mac9sb"
 LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 HTTPD_CONF="/etc/apache2/httpd.conf"
 CUSTOM_CONF="/etc/apache2/extra/custom.conf"
-LOG_DIR="/var/log/apache2/sites"
+APACHE_LOG_DIR="/var/log/apache2/sites"
 
 UID_NUM="$(id -u)"
 REMOVE_TOOLS=false
@@ -63,19 +67,28 @@ printf "\033[1;31m  Developer Environment Teardown\033[0m\n"
 printf "\033[1;31m=============================================================================\033[0m\n"
 printf "\n"
 printf "  This will:\n"
-printf "    - Unload and remove all %s.* launchd agents\n" "$GITHUB_USER"
+printf "    - Stop server-manager and all managed server processes\n"
+printf "    - Unload and remove all symlinked launchd agents\n"
+printf "      (server-manager, sites-watcher, backup, cloudflared)\n"
 printf "    - Remove Apache custom site configuration\n"
-printf "    - Remove watcher runtime state (.watchers/)\n"
+printf "    - Remove SQLite state database (%s/state.db)\n" "$STATE_DIR"
+printf "    - Remove local backups (%s/backups/)\n" "$STATE_DIR"
+printf "    - Remove application logs (%s)\n" "$APP_LOG_DIR"
 printf "    - Remove dotfile symlinks (~/.zshrc, ~/.vimrc, etc.)\n"
-printf "    - Remove site log directory (%s)\n" "$LOG_DIR"
+printf "    - Remove Cloudflare tunnel config symlink (~/.cloudflared/config.yml)\n"
+printf "    - Remove log rotation config (/etc/newsyslog.d/com.mac9sb.conf)\n"
+printf "    - Remove git hooks (.git/hooks/pre-push)\n"
+printf "    - Remove Apache site log directory (%s)\n" "$APACHE_LOG_DIR"
 if [ "$REMOVE_TOOLS" = true ]; then
-    printf "    - Remove cloudflared and gh CLI from /usr/local/bin\n"
+    printf "    - Remove cloudflared from /usr/local/bin\n"
 fi
 printf "\n"
 printf "  This will NOT:\n"
-printf "    - Delete submodule source code (sites/, tooling/, tsx/)\n"
-printf "    - Delete template files (utilities/)\n"
+printf "    - Delete submodule source code (sites/, tooling/)\n"
+printf "    - Delete template/script files (utilities/)\n"
 printf "    - Delete SSH keys (~/.ssh/id_ed25519)\n"
+printf "    - Delete Cloudflare tunnel credentials (~/.cloudflared/*.json)\n"
+printf "    - Delete R2 credentials (.env.local)\n"
 printf "    - Modify the git repository itself\n"
 printf "\n"
 
@@ -90,46 +103,65 @@ printf "\n"
 #  Step 1 — Unload and remove launchd agents
 # =============================================================================
 
-info "Step 1/6: Removing launchd agents"
+info "Step 1/8: Removing launchd agents"
 
-# Remove the sites watcher agent
-_sites_watcher_label="com.${GITHUB_USER}.sites-watcher"
-_sites_watcher_plist="${LAUNCH_AGENTS_DIR}/${_sites_watcher_label}.plist"
-if [ -f "$_sites_watcher_plist" ]; then
-    launchctl bootout "gui/${UID_NUM}/${_sites_watcher_label}" 2>/dev/null || true
-    rm -f "$_sites_watcher_plist"
-    success "Removed sites-watcher agent"
-fi
+# Stop the server-manager first (it will SIGTERM all child server processes)
+for _agent_name in server-manager sites-watcher backup cloudflared; do
+    _label="com.${GITHUB_USER}.${_agent_name}"
+    _plist="${LAUNCH_AGENTS_DIR}/${_label}.plist"
+    if [ -f "$_plist" ] || [ -L "$_plist" ]; then
+        launchctl bootout "gui/${UID_NUM}/${_label}" 2>/dev/null || true
+        rm -f "$_plist"
+        success "Stopped and removed ${_agent_name} agent"
+    fi
+done
 
-# Remove all per-site agents (server + watcher pairs)
+# Remove any leftover per-site agents from previous installs
 for _plist in "${LAUNCH_AGENTS_DIR}"/com.${GITHUB_USER}.*.plist; do
-    [ ! -f "$_plist" ] && continue
+    [ ! -f "$_plist" ] && [ ! -L "$_plist" ] && continue
     _label="$(basename "$_plist" .plist)"
     launchctl bootout "gui/${UID_NUM}/${_label}" 2>/dev/null || true
     rm -f "$_plist"
-    success "  Removed agent: $_label"
+    success "  Removed legacy agent: $_label"
 done
 
 success "All launchd agents removed"
 
 # =============================================================================
-#  Step 2 — Remove watcher runtime state
+#  Step 2 — Remove watcher runtime state and backups
 # =============================================================================
 
-info "Step 2/6: Removing watcher state"
+info "Step 2/8: Removing state database, backups, and logs"
 
-if [ -d "$WATCHER_DIR" ]; then
-    rm -rf "$WATCHER_DIR"
-    success "Removed $WATCHER_DIR"
+if [ -d "$STATE_DIR" ]; then
+    # Remove SQLite database and any WAL/SHM files
+    rm -f "$STATE_DIR/state.db" "$STATE_DIR/state.db-wal" "$STATE_DIR/state.db-shm"
+    # Remove any legacy flat files and migrated backups
+    rm -f "$STATE_DIR/port-assignments" "$STATE_DIR/port-assignments.migrated"
+    rm -f "$STATE_DIR/sites-state" "$STATE_DIR/sites-state.migrated"
+    rm -f "$STATE_DIR/server-manager.pid" "$STATE_DIR/restart-request"
+    rm -rf "$STATE_DIR/pids"
+    # Remove backup archives
+    rm -rf "$STATE_DIR/backups"
+    # Remove the directory if empty
+    rmdir "$STATE_DIR" 2>/dev/null || rm -rf "$STATE_DIR"
+    success "Removed $STATE_DIR"
 else
-    success "No watcher state to remove"
+    success "No state database to remove"
+fi
+
+if [ -d "$APP_LOG_DIR" ]; then
+    rm -rf "$APP_LOG_DIR"
+    success "Removed $APP_LOG_DIR"
+else
+    success "No application logs to remove"
 fi
 
 # =============================================================================
 #  Step 3 — Remove Apache custom configuration
 # =============================================================================
 
-info "Step 3/6: Removing Apache custom configuration"
+info "Step 3/8: Removing Apache custom configuration"
 
 # Remove the custom.conf file
 if [ -f "$CUSTOM_CONF" ]; then
@@ -146,9 +178,9 @@ if grep -q "extra/custom.conf" "$HTTPD_CONF" 2>/dev/null; then
 fi
 
 # Remove site log directory
-if [ -d "$LOG_DIR" ]; then
-    sudo rm -rf "$LOG_DIR"
-    success "Removed $LOG_DIR"
+if [ -d "$APACHE_LOG_DIR" ]; then
+    sudo rm -rf "$APACHE_LOG_DIR"
+    success "Removed $APACHE_LOG_DIR"
 fi
 
 # Test and restart Apache to apply changes
@@ -163,7 +195,7 @@ fi
 #  Step 4 — Remove dotfile symlinks
 # =============================================================================
 
-info "Step 4/6: Removing dotfile symlinks"
+info "Step 4/8: Removing dotfile symlinks"
 
 for _dotfile in zshrc vimrc gitignore gitconfig; do
     _src="$DOTFILES_DIR/$_dotfile"
@@ -211,10 +243,62 @@ else
 fi
 
 # =============================================================================
-#  Step 5 — Remove Touch ID for sudo (optional)
+#  Step 5 — Remove Cloudflare tunnel config symlink & log rotation & git hooks
 # =============================================================================
 
-info "Step 5/6: Touch ID for sudo"
+info "Step 5/8: Removing tunnel config, log rotation, and git hooks"
+
+# Cloudflare tunnel config symlink (preserve credentials)
+_cf_config="$HOME/.cloudflared/config.yml"
+_cf_config_src="$UTILITIES_DIR/cloudflared/config.yml"
+if [ -L "$_cf_config" ] && [ "$(readlink "$_cf_config")" = "$_cf_config_src" ]; then
+    rm -f "$_cf_config"
+    success "  Removed ~/.cloudflared/config.yml symlink"
+
+    _backup=""
+    for _bak in "${_cf_config}".bak.*; do
+        [ -f "$_bak" ] && _backup="$_bak"
+    done
+    if [ -n "$_backup" ]; then
+        mv "$_backup" "$_cf_config"
+        success "  Restored ~/.cloudflared/config.yml from backup"
+    fi
+elif [ -L "$_cf_config" ]; then
+    warn "  ~/.cloudflared/config.yml is a symlink but points elsewhere — skipping"
+else
+    success "  ~/.cloudflared/config.yml is not our symlink — skipping"
+fi
+
+# Remove the rendered config.yml from the repo (it's gitignored)
+if [ -f "$_cf_config_src" ]; then
+    rm -f "$_cf_config_src"
+    success "  Removed rendered tunnel config from utilities/cloudflared/"
+fi
+
+# Log rotation (newsyslog)
+_newsyslog="/etc/newsyslog.d/com.mac9sb.conf"
+if [ -f "$_newsyslog" ]; then
+    sudo rm -f "$_newsyslog"
+    success "  Removed $_newsyslog"
+else
+    success "  No newsyslog config to remove"
+fi
+
+# Git hooks
+_hooks_dir="$DEV_DIR/.git/hooks"
+for _hook_name in pre-push; do
+    _hook_file="$_hooks_dir/$_hook_name"
+    if [ -f "$_hook_file" ]; then
+        rm -f "$_hook_file"
+        success "  Removed git hook: $_hook_name"
+    fi
+done
+
+# =============================================================================
+#  Step 6 — Remove Touch ID for sudo (optional)
+# =============================================================================
+
+info "Step 6/8: Touch ID for sudo"
 
 if [ -f /etc/pam.d/sudo_local ] && grep -q "pam_tid.so" /etc/pam.d/sudo_local 2>/dev/null; then
     if confirm "  Remove Touch ID for sudo?"; then
@@ -228,20 +312,39 @@ else
 fi
 
 # =============================================================================
-#  Step 6 — Remove CLI tools (only with --all)
+#  Step 7 — Remove last-known-good binaries
 # =============================================================================
 
-info "Step 6/6: CLI tools"
+info "Step 7/8: Cleaning up rollback binaries"
+
+_cleaned_binaries=0
+for _dir in "$SITES_DIR"/*/; do
+    [ ! -d "$_dir" ] && continue
+    for _suffix in .run .bak .last-good; do
+        _file="$_dir/.build/release/Application${_suffix}"
+        if [ -f "$_file" ]; then
+            rm -f "$_file"
+            _cleaned_binaries=$((_cleaned_binaries + 1))
+        fi
+    done
+done
+
+if [ "$_cleaned_binaries" -gt 0 ]; then
+    success "  Removed $_cleaned_binaries rollback/run binary file(s)"
+else
+    success "  No rollback binaries to remove"
+fi
+
+# =============================================================================
+#  Step 8 — Remove CLI tools (only with --all)
+# =============================================================================
+
+info "Step 8/8: CLI tools"
 
 if [ "$REMOVE_TOOLS" = true ]; then
     if [ -f /usr/local/bin/cloudflared ]; then
         sudo rm -f /usr/local/bin/cloudflared
         success "  Removed cloudflared"
-    fi
-
-    if [ -f /usr/local/bin/gh ]; then
-        sudo rm -f /usr/local/bin/gh
-        success "  Removed gh"
     fi
 
     success "CLI tools removed"
@@ -260,18 +363,27 @@ printf "\033[1;32m==============================================================
 printf "\n"
 printf "  \033[1mRemoved:\033[0m\n"
 printf "    - launchd agents from %s/\n" "$LAUNCH_AGENTS_DIR"
-printf "    - Watcher state from %s/\n" "$WATCHER_DIR"
+printf "      (server-manager, sites-watcher, backup, cloudflared)\n"
+printf "    - Application state from %s/\n" "$STATE_DIR"
+printf "    - Local backup archives from %s/backups/\n" "$STATE_DIR"
+printf "    - Application logs from %s/\n" "$APP_LOG_DIR"
 printf "    - Apache config (%s)\n" "$CUSTOM_CONF"
 printf "    - Dotfile symlinks\n"
+printf "    - Tunnel config symlink (~/.cloudflared/config.yml)\n"
+printf "    - Log rotation config (/etc/newsyslog.d/com.mac9sb.conf)\n"
+printf "    - Git hooks (pre-push)\n"
+printf "    - Rollback binaries (*.run, *.bak)\n"
 if [ "$REMOVE_TOOLS" = true ]; then
-    printf "    - CLI tools (cloudflared, gh)\n"
+    printf "    - CLI tools (cloudflared)\n"
 fi
 printf "\n"
 printf "  \033[1mPreserved:\033[0m\n"
-printf "    - Source code in sites/, tooling/, tsx/\n"
-printf "    - Templates in utilities/\n"
+printf "    - Source code in sites/, tooling/\n"
+printf "    - Templates and scripts in utilities/\n"
 printf "    - Dotfile sources in utilities/dotfiles/\n"
 printf "    - SSH keys in ~/.ssh/\n"
+printf "    - Cloudflare tunnel credentials (~/.cloudflared/*.json)\n"
+printf "    - R2 credentials (.env.local)\n"
 printf "    - Git repository and submodule configuration\n"
 printf "\n"
 printf "  To re-setup: sudo ./setup.sh\n"

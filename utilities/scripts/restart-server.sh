@@ -1,22 +1,40 @@
 #!/bin/sh
-# Restart a launchd-managed server after its binary is rebuilt.
-# Usage: restart-server.sh <launchd-label>
+# =============================================================================
+#  Restart a server managed by server-manager.sh
 #
-# Called by per-site watcher plists via WatchPaths. The label is passed
-# as the first argument so this single script handles every server.
+#  Usage: restart-server.sh <server-name>
+#
+#  Writes the server name to the restart_queue table in the shared SQLite
+#  database and sends SIGUSR1 to the server-manager process, which picks
+#  up the request and restarts just that one child.
+#
+#  State DB: ~/Library/Application Support/com.mac9sb/state.db
+# =============================================================================
 
-LABEL="$1"
-[ -z "$LABEL" ] && exit 1
+SERVER_NAME="$1"
+[ -z "$SERVER_NAME" ] && { echo "Usage: restart-server.sh <server-name>" >&2; exit 1; }
 
-UID_NUM="$(id -u)"
-PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
+# Source the shared SQLite helpers
+SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "$SCRIPTS_DIR/db.sh"
 
-# Brief delay to ensure the binary write is fully flushed to disk
-sleep 1
+# Initialise DB (no-op if already exists)
+db_init
 
-# kickstart -k kills the running instance and restarts it in one shot.
-# Fall back to bootout/bootstrap if kickstart is unavailable.
-launchctl kickstart -k "gui/${UID_NUM}/${LABEL}" 2>/dev/null || {
-    launchctl bootout "gui/${UID_NUM}/${LABEL}" 2>/dev/null || true
-    [ -f "$PLIST" ] && launchctl bootstrap "gui/${UID_NUM}" "$PLIST" 2>/dev/null || true
-}
+# Queue the restart request atomically
+db_queue_restart "$SERVER_NAME"
+
+# Signal the server-manager to process the queue
+_pid="$(db_get_config "manager_pid")"
+
+if [ -z "$_pid" ]; then
+    echo "Server manager PID not found in database" >&2
+    exit 1
+fi
+
+if kill -0 "$_pid" 2>/dev/null; then
+    kill -USR1 "$_pid"
+else
+    echo "Server manager (PID $_pid) is not running" >&2
+    exit 1
+fi

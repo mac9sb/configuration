@@ -1,26 +1,15 @@
 # macOS
 .DS_Store
-.AppleDouble
-.LSOverride
 
 # Build artifacts
 .build/
 .output/
 .swiftpm/
 
-# Watcher runtime state
-.watchers/
-
 # Editor files
 *.swp
 *.swo
 *~
-.vscode/
-.idea/
-
-# Node (tsx submodule)
-node_modules/
-.next/
 
 # Environment files
 .env

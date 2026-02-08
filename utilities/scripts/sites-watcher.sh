@@ -1,50 +1,66 @@
 #!/bin/sh
 # =============================================================================
-#  Sites Watcher — Auto-configures Apache & launchd for ~/Developer/sites
+#  Sites Watcher — Auto-configures Apache for ~/Developer/sites
 #
 #  Scans ~/Developer/sites for project directories. When a project has:
-#    - .output/                    → configured as a static site (Alias)
+#    - .output/                    → configured as a static site
 #    - .build/release/Application  → configured as a server (reverse proxy)
 #
-#  Runs idempotently: compares current state against a saved snapshot and
-#  only regenerates config / restarts services when something has changed.
+#  Domain routing (derived from directory names + primary domain):
+#    The primary domain is parsed from the cloudflared config comment:
+#      # primary-domain: maclong.dev
 #
-#  Uses template files from ~/Developer/utilities/ instead of inline heredocs.
-#  launchd manages crash restarts natively — no per-site wrapper scripts.
-#  A single shared restart-server.sh handles all binary-rebuild restarts.
+#    Directory name        VirtualHost ServerName     Access
+#    ─────────────────     ──────────────────────     ──────────────────────
+#    sites/maclong.dev/    maclong.dev                root of primary domain
+#    sites/api-thing/      api-thing.maclong.dev      subdomain of primary
+#    sites/cool-app.com/   cool-app.com               custom domain
+#
+#    Every site also gets a path-based entry in the default VirtualHost
+#    for local dev access at http://localhost/site-name/.
+#
+#  Runs idempotently: compares current state against the SQLite database
+#  and only regenerates config / restarts services when something has changed.
+#
+#  Uses template files from ~/Developer/utilities/apache/ for Apache config.
+#  Server binaries are managed by a separate server-manager process — this
+#  script sends SIGHUP so it re-scans the filesystem for new/removed servers.
+#
+#  All state is stored in a SQLite database (WAL mode) for atomic,
+#  concurrent-safe access shared with server-manager and restart-server.sh.
+#
+#  State DB: ~/Library/Application Support/com.mac9sb/state.db
+#    - sites table        classification + port assignments
+#    - config table       server-manager PID for signalling
+#
+#  Logs: ~/Library/Logs/com.mac9sb/
+#    - sites-watcher.log
 #
 #  Triggered by launchd via:
 #    - WatchPaths on ~/Developer/sites (new project added/removed)
 #    - StartInterval every 30s (catches .output / .build appearing)
 # =============================================================================
 
-GITHUB_USER="mac9sb"
 DEV_DIR="$HOME/Developer"
 SITES_DIR="$DEV_DIR/sites"
 UTILITIES_DIR="$DEV_DIR/utilities"
-WATCHER_DIR="$DEV_DIR/.watchers"
-LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
+LOG_DIR="$HOME/Library/Logs/com.mac9sb"
 CUSTOM_CONF="/etc/apache2/extra/custom.conf"
-LOG_DIR="/var/log/apache2/sites"
-PORTS_FILE="$WATCHER_DIR/port-assignments"
-STATE_FILE="$WATCHER_DIR/sites-state"
-WATCHER_LOG="$WATCHER_DIR/sites-watcher.log"
-SERVER_PORT_START=8000
-UID_NUM="$(id -u)"
+APACHE_LOG_DIR="/var/log/apache2/sites"
+WATCHER_LOG="$LOG_DIR/sites-watcher.log"
 
-# --- Template directories ---
 APACHE_TMPL_DIR="$UTILITIES_DIR/apache"
-LAUNCHD_TMPL_DIR="$UTILITIES_DIR/launchd"
-SCRIPTS_TMPL_DIR="$UTILITIES_DIR/scripts"
+CLOUDFLARED_CONFIG="$UTILITIES_DIR/cloudflared/config.yml"
+
+# Source the shared SQLite helpers
+SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "$SCRIPTS_DIR/db.sh"
 
 log() { printf "[%s] %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "$WATCHER_LOG"; }
 
 # =============================================================================
 #  Template Rendering
 # =============================================================================
-# Renders a template file by replacing {{KEY}} placeholders with values.
-# Usage: render_template <template_file> KEY=value KEY2=value2 ...
-# Output is written to stdout.
 
 render_template() {
     _tmpl_file="$1"
@@ -65,18 +81,62 @@ render_template() {
 }
 
 # =============================================================================
-#  Ensure directories exist
+#  Parse primary domain from cloudflared config
 # =============================================================================
-mkdir -p "$WATCHER_DIR" "$LAUNCH_AGENTS_DIR"
-sudo mkdir -p "$LOG_DIR" 2>/dev/null || true
+#  Reads the "# primary-domain: maclong.dev" comment line from config.yml.
+#  This is the single source of truth for subdomain generation.
+
+PRIMARY_DOMAIN=""
+if [ -f "$CLOUDFLARED_CONFIG" ]; then
+    PRIMARY_DOMAIN="$(sed -n 's/^# *primary-domain: *//p' "$CLOUDFLARED_CONFIG" | head -1 | tr -d '[:space:]')"
+fi
+
+if [ -z "$PRIMARY_DOMAIN" ]; then
+    log "WARN: No primary-domain found in $CLOUDFLARED_CONFIG — subdomain routing disabled"
+fi
+
+# =============================================================================
+#  Resolve the public domain for a site directory name
+# =============================================================================
+#  - Name contains a dot  → custom domain (name IS the domain)
+#  - Name has no dot       → subdomain of PRIMARY_DOMAIN
+#  Returns the domain on stdout. Returns 1 only if no primary domain is
+#  configured AND the name has no dot (cannot form a subdomain).
+
+resolve_domain() {
+    case "$1" in
+        *.*)
+            # Custom domain — directory name is the domain
+            printf '%s' "$1"
+            return 0
+            ;;
+        *)
+            # Subdomain of primary domain
+            if [ -n "$PRIMARY_DOMAIN" ]; then
+                printf '%s.%s' "$1" "$PRIMARY_DOMAIN"
+                return 0
+            fi
+            return 1
+            ;;
+    esac
+}
+
+# =============================================================================
+#  Ensure directories exist & initialise database
+# =============================================================================
+mkdir -p "$LOG_DIR"
+sudo mkdir -p "$APACHE_LOG_DIR" 2>/dev/null || true
+
+db_init
 
 # =============================================================================
 #  1. Scan sites directory and build current state
 # =============================================================================
 #  State is a sorted list of lines:  repo:type
-#  e.g.  "my-api:server\nportfolio:static"
+#  e.g.  "maclong.dev:static\napi-thing:server"
 
 current_state=""
+_discovered_names=""
 for dir in "$SITES_DIR"/*/; do
     [ ! -d "$dir" ] && continue
     repo="$(basename "$dir")"
@@ -84,9 +144,11 @@ for dir in "$SITES_DIR"/*/; do
     if [ -d "$dir/.output" ]; then
         current_state="${current_state}${repo}:static
 "
+        _discovered_names="${_discovered_names} ${repo}"
     elif [ -f "$dir/.build/release/Application" ]; then
         current_state="${current_state}${repo}:server
 "
+        _discovered_names="${_discovered_names} ${repo}"
     fi
 done
 
@@ -95,8 +157,7 @@ current_state="$(printf '%s' "$current_state" | sort)"
 # =============================================================================
 #  2. Compare with previous state — exit early if nothing changed
 # =============================================================================
-previous_state=""
-[ -f "$STATE_FILE" ] && previous_state="$(cat "$STATE_FILE")"
+previous_state="$(db_get_sites_state)"
 
 if [ "$current_state" = "$previous_state" ]; then
     exit 0
@@ -107,68 +168,179 @@ log "Previous: $(printf '%s' "$previous_state" | tr '\n' ' ')"
 log "Current:  $(printf '%s' "$current_state" | tr '\n' ' ')"
 
 # =============================================================================
-#  3. Load / assign stable port numbers
+#  3. Update site records in the database (upsert + prune removed sites)
 # =============================================================================
-#  Port assignments are persisted in $PORTS_FILE so that a site always keeps
-#  the same port even when other sites are added or removed.
-#  Format:  repo=port
 
-touch "$PORTS_FILE"
+printf '%s' "$current_state" | while IFS=: read -r repo type; do
+    [ -z "$repo" ] && continue
+    db_set_site "$repo" "$type"
+done
 
-get_port() {
-    _repo="$1"
-    _existing="$(grep "^${_repo}=" "$PORTS_FILE" 2>/dev/null | head -1 | cut -d= -f2)"
-    if [ -n "$_existing" ]; then
-        printf '%s' "$_existing"
-        return
-    fi
-    # Find the next free port
-    _max=$SERVER_PORT_START
-    while IFS='=' read -r _ _p; do
-        [ -n "$_p" ] && [ "$_p" -ge "$_max" ] && _max=$((_p + 1))
-    done < "$PORTS_FILE"
-    printf '%s=%s\n' "$_repo" "$_max" >> "$PORTS_FILE"
-    printf '%s' "$_max"
-}
+db_prune_sites "$_discovered_names"
 
 # =============================================================================
 #  4. Generate Apache custom.conf from templates
 # =============================================================================
+#
+#  Every site gets TWO config entries:
+#    1. A VirtualHost block for public access (domain or subdomain)
+#    2. A path-based entry in the default VirtualHost for localhost dev access
+#
+#  Layout:
+#    - Default VirtualHost (listed FIRST — catches localhost and any unmatched
+#      request). Contains path-based Alias / Location blocks for ALL sites.
+#    - Per-site VirtualHosts for domain and subdomain access.
 
-# Start with the header
 _conf_file="$(mktemp)"
-printf 'ProxyPreserveHost On\nProxyRequests Off\n\n' > "$_conf_file"
+_vhost_file="$(mktemp)"
+_default_file="$(mktemp)"
 
-# Append per-site blocks
 printf '%s' "$current_state" | while IFS=: read -r repo type; do
     [ -z "$repo" ] && continue
     _dir="$SITES_DIR/$repo"
 
+    # ── Path-based entry (always generated, for localhost dev access) ──
     case "$type" in
         static)
             _output="$_dir/.output"
             render_template "$APACHE_TMPL_DIR/static-site.conf.tmpl" \
                 "SITE_NAME=$repo" \
                 "OUTPUT_DIR=$_output" \
-                "LOG_DIR=$LOG_DIR" \
-                >> "$_conf_file"
-            printf '\n' >> "$_conf_file"
+                "LOG_DIR=$APACHE_LOG_DIR" \
+                >> "$_default_file"
+            printf '\n' >> "$_default_file"
             ;;
         server)
-            _port="$(get_port "$repo")"
+            _port="$(db_get_port "$repo")"
             render_template "$APACHE_TMPL_DIR/server-site.conf.tmpl" \
                 "SITE_NAME=$repo" \
                 "PORT=$_port" \
-                "LOG_DIR=$LOG_DIR" \
-                >> "$_conf_file"
-            printf '\n' >> "$_conf_file"
+                "LOG_DIR=$APACHE_LOG_DIR" \
+                >> "$_default_file"
+            printf '\n' >> "$_default_file"
+            ;;
+    esac
+
+    # ── VirtualHost entry (for public domain/subdomain access) ──
+    _domain="$(resolve_domain "$repo")" || true
+
+    if [ -z "$_domain" ]; then
+        log "  Path-only: /$repo (no primary domain configured for subdomain)"
+        continue
+    fi
+
+    case "$type" in
+        static)
+            _output="$_dir/.output"
+            render_template "$APACHE_TMPL_DIR/static-vhost.conf.tmpl" \
+                "SITE_NAME=$repo" \
+                "DOMAIN=$_domain" \
+                "OUTPUT_DIR=$_output" \
+                "LOG_DIR=$APACHE_LOG_DIR" \
+                >> "$_vhost_file"
+            printf '\n' >> "$_vhost_file"
+            log "  VirtualHost: $_domain → static ($repo)"
+            ;;
+        server)
+            _port="$(db_get_port "$repo")"
+            render_template "$APACHE_TMPL_DIR/server-vhost.conf.tmpl" \
+                "SITE_NAME=$repo" \
+                "DOMAIN=$_domain" \
+                "PORT=$_port" \
+                "LOG_DIR=$APACHE_LOG_DIR" \
+                >> "$_vhost_file"
+            printf '\n' >> "$_vhost_file"
+            log "  VirtualHost: $_domain → proxy :$_port ($repo)"
             ;;
     esac
 done
 
+# --- Assemble the final config ---
+cat > "$_conf_file" <<APACHE_HEADER
+# =============================================================================
+#  Auto-generated by sites-watcher.sh — do not edit directly.
+#
+#  Primary domain: ${PRIMARY_DOMAIN:-"(not configured)"}
+#  Routing:
+#    sites/maclong.dev/   → VirtualHost maclong.dev        (custom domain)
+#    sites/api-thing/     → VirtualHost api-thing.${PRIMARY_DOMAIN:-"???"}  (subdomain)
+#    All sites            → localhost/site-name/            (path-based dev)
+# =============================================================================
+
+APACHE_HEADER
+
+_has_vhosts=false
+_has_defaults=false
+
+if [ -s "$_vhost_file" ]; then
+    _has_vhosts=true
+fi
+
+if [ -s "$_default_file" ]; then
+    _has_defaults=true
+fi
+
+if [ "$_has_vhosts" = true ] || [ "$_has_defaults" = true ]; then
+
+    # --- Default VirtualHost (must come first — catches localhost + unmatched) ---
+    cat >> "$_conf_file" <<'DEFAULT_OPEN'
+# --- Default VirtualHost (localhost path-based access for all sites) ---
+<VirtualHost *:80>
+    ServerName localhost
+    ServerAlias *
+
+    ProxyPreserveHost On
+    ProxyRequests Off
+
+    # --- Global proxy headers (Cloudflare terminates TLS) ---
+    RequestHeader set X-Forwarded-Proto "https"
+    RequestHeader set X-Forwarded-Port "443"
+
+DEFAULT_OPEN
+
+    if [ "$_has_defaults" = true ]; then
+        cat "$_default_file" >> "$_conf_file"
+    fi
+
+    cat >> "$_conf_file" <<'DEFAULT_CLOSE'
+</VirtualHost>
+
+DEFAULT_CLOSE
+
+    # --- Domain / subdomain VirtualHosts ---
+    if [ "$_has_vhosts" = true ]; then
+        cat "$_vhost_file" >> "$_conf_file"
+    fi
+fi
+
+rm -f "$_vhost_file" "$_default_file"
+
+# Atomic swap: backup old config, install new, validate, rollback on failure
+_old_conf=""
+if [ -f "$CUSTOM_CONF" ]; then
+    _old_conf="$(mktemp)"
+    sudo cp "$CUSTOM_CONF" "$_old_conf"
+fi
+
 sudo cp "$_conf_file" "$CUSTOM_CONF"
 rm -f "$_conf_file"
-log "Wrote $CUSTOM_CONF"
+
+if sudo apachectl configtest >/dev/null 2>&1; then
+    log "Wrote $CUSTOM_CONF (configtest passed)"
+else
+    log "ERROR: New config failed configtest — rolling back"
+    if [ -n "$_old_conf" ] && [ -f "$_old_conf" ]; then
+        sudo cp "$_old_conf" "$CUSTOM_CONF"
+        log "Restored previous $CUSTOM_CONF"
+    else
+        sudo rm -f "$CUSTOM_CONF"
+        log "Removed broken $CUSTOM_CONF (no previous config to restore)"
+    fi
+    rm -f "$_old_conf"
+    osascript -e 'display notification "Apache configuration test failed after sites-watcher update. Rolled back to previous config." with title "Apache Config Error" sound name "Basso"' 2>/dev/null || true
+    exit 1
+fi
+rm -f "$_old_conf"
 
 # =============================================================================
 #  5. Set permissions on static site output directories
@@ -181,95 +353,27 @@ printf '%s' "$current_state" | while IFS=: read -r repo type; do
 done
 
 # =============================================================================
-#  6. Manage launchd agents for server binaries
+#  6. Signal the server-manager to re-scan
 # =============================================================================
-#  launchd handles crash restarts natively (KeepAlive + ThrottleInterval).
-#  The server-agent plist runs the binary directly — no wrapper script.
-#  A single shared restart-server.sh handles all rebuild restarts.
-
-_restart_script="$SCRIPTS_TMPL_DIR/restart-server.sh"
-
-# Collect current server repos
-printf '%s' "$current_state" | while IFS=: read -r repo type; do
-    [ "$type" = "server" ] && printf '%s\n' "$repo"
-done > /tmp/sites-watcher-servers.$$
-current_servers="$(cat /tmp/sites-watcher-servers.$$)"
-rm -f /tmp/sites-watcher-servers.$$
-
-# Collect previous server repos
-printf '%s' "$previous_state" | while IFS=: read -r repo type; do
-    [ "$type" = "server" ] && printf '%s\n' "$repo"
-done > /tmp/sites-watcher-prev-servers.$$
-previous_servers="$(cat /tmp/sites-watcher-prev-servers.$$)"
-rm -f /tmp/sites-watcher-prev-servers.$$
-
-# --- Remove agents for sites no longer present as servers ---
-for repo in $previous_servers; do
-    if ! printf '%s' "$current_servers" | grep -qx "$repo"; then
-        log "Removing agents for departed server: $repo"
-
-        _label="com.${GITHUB_USER}.${repo}"
-        _watcher_label="${_label}.watcher"
-
-        launchctl bootout "gui/${UID_NUM}/${_label}" 2>/dev/null || true
-        launchctl bootout "gui/${UID_NUM}/${_watcher_label}" 2>/dev/null || true
-        rm -f "${LAUNCH_AGENTS_DIR}/${_label}.plist"
-        rm -f "${LAUNCH_AGENTS_DIR}/${_watcher_label}.plist"
+_mgr_pid="$(db_get_config "manager_pid")"
+if [ -n "$_mgr_pid" ]; then
+    if kill -0 "$_mgr_pid" 2>/dev/null; then
+        kill -HUP "$_mgr_pid"
+        log "Sent SIGHUP to server-manager (PID $_mgr_pid)"
+    else
+        log "WARN: server-manager (PID $_mgr_pid) is not running"
     fi
-done
-
-# --- Create / update agents for current servers ---
-for repo in $current_servers; do
-    _dir="$SITES_DIR/$repo"
-    _binary="$_dir/.build/release/Application"
-    _port="$(get_port "$repo")"
-    _label="com.${GITHUB_USER}.${repo}"
-    _watcher_label="${_label}.watcher"
-
-    # Server agent — runs the binary directly, launchd manages restarts
-    _plist="${LAUNCH_AGENTS_DIR}/${_label}.plist"
-    render_template "$LAUNCHD_TMPL_DIR/server-agent.plist.tmpl" \
-        "LABEL=$_label" \
-        "BINARY_PATH=$_binary" \
-        "WORKING_DIR=$_dir" \
-        "PORT=$_port" \
-        "LOG_FILE=$WATCHER_DIR/${repo}.log" \
-        "ERROR_LOG_FILE=$WATCHER_DIR/${repo}.error.log" \
-        > "$_plist"
-
-    launchctl bootout "gui/${UID_NUM}/${_label}" 2>/dev/null || true
-    launchctl bootstrap "gui/${UID_NUM}" "$_plist" 2>/dev/null || launchctl load "$_plist" 2>/dev/null || true
-    log "Server agent loaded: $_label (port $_port)"
-
-    # Watcher agent — calls shared restart-server.sh with label as $1
-    _watcher_plist="${LAUNCH_AGENTS_DIR}/${_watcher_label}.plist"
-    render_template "$LAUNCHD_TMPL_DIR/watcher-agent.plist.tmpl" \
-        "LABEL=$_watcher_label" \
-        "RESTART_SCRIPT=$_restart_script" \
-        "SERVER_LABEL=$_label" \
-        "BINARY_PATH=$_binary" \
-        "LOG_FILE=$WATCHER_DIR/${repo}-watcher.log" \
-        "ERROR_LOG_FILE=$WATCHER_DIR/${repo}-watcher.error.log" \
-        > "$_watcher_plist"
-
-    launchctl bootout "gui/${UID_NUM}/${_watcher_label}" 2>/dev/null || true
-    launchctl bootstrap "gui/${UID_NUM}" "$_watcher_plist" 2>/dev/null || launchctl load "$_watcher_plist" 2>/dev/null || true
-    log "Watcher agent loaded: $_watcher_label"
-done
-
-# =============================================================================
-#  7. Test & restart Apache
-# =============================================================================
-if sudo apachectl configtest >/dev/null 2>&1; then
-    sudo apachectl restart
-    log "Apache restarted successfully"
 else
-    log "ERROR: Apache config test failed — manual fix required"
-    osascript -e 'display notification "Apache configuration test failed after sites-watcher update. Check '"$CUSTOM_CONF"'." with title "Apache Config Error" sound name "Basso"' 2>/dev/null || true
+    log "WARN: server-manager PID not found in database — manager may not be running"
 fi
 
 # =============================================================================
-#  8. Save state snapshot
+#  7. Restart Apache (config already validated during atomic swap above)
 # =============================================================================
-printf '%s' "$current_state" > "$STATE_FILE"
+sudo apachectl restart
+log "Apache restarted successfully"
+
+# =============================================================================
+#  8. Done — state is already persisted in the database
+# =============================================================================
 log "State saved — done"

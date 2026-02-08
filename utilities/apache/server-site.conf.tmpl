@@ -2,7 +2,24 @@
 <Location /{{SITE_NAME}}/>
     ProxyPass        http://127.0.0.1:{{PORT}}/
     ProxyPassReverse http://127.0.0.1:{{PORT}}/
+
+    # --- Forwarding headers (Cloudflare terminates TLS) ---
+    RequestHeader set X-Forwarded-Proto "https"
+    RequestHeader set X-Forwarded-Port "443"
+    ProxyAddHeaders On
+
+    # --- Proxy timeouts (tuned for dev) ---
+    ProxyTimeout 300
+    SetEnv proxy-initial-not-pooled 1
+
     Require all granted
 </Location>
+
+# --- {{SITE_NAME}} WebSocket upgrade ---
+RewriteEngine On
+RewriteCond %{HTTP:Upgrade} websocket [NC]
+RewriteCond %{HTTP:Connection} upgrade [NC]
+RewriteRule ^/{{SITE_NAME}}/(.*) ws://127.0.0.1:{{PORT}}/$1 [P,L]
+
 ErrorLog  "{{LOG_DIR}}/{{SITE_NAME}}-error.log"
 CustomLog "{{LOG_DIR}}/{{SITE_NAME}}-access.log" combined

@@ -4,26 +4,26 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>{{LABEL}}</string>
+    <string>com.mac9sb.sites-watcher</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/bin/sh</string>
-        <string>{{WATCHER_SCRIPT}}</string>
+        <string>/Users/mac/Developer/utilities/scripts/sites-watcher.sh</string>
     </array>
 
     <key>WatchPaths</key>
     <array>
-        <string>{{SITES_DIR}}</string>
+        <string>/Users/mac/Developer/sites</string>
     </array>
 
     <key>StartInterval</key>
     <integer>30</integer>
 
     <key>StandardOutPath</key>
-    <string>{{LOG_FILE}}</string>
+    <string>/Users/mac/Library/Logs/com.mac9sb/sites-watcher.stdout.log</string>
 
     <key>StandardErrorPath</key>
-    <string>{{ERROR_LOG_FILE}}</string>
+    <string>/Users/mac/Library/Logs/com.mac9sb/sites-watcher.stderr.log</string>
 </dict>
 </plist>
