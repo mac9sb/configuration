@@ -288,7 +288,7 @@ fi
 
 if [ -d "$ZED_APP" ]; then
     success "Zed already installed"
-elif [ "$ZED_SUPPORTED" != true ]; then
+elif [ "$ZED_SUPPORTED" = false ]; then
     warn "Skipping Zed install for unsupported architecture"
 else
     TMPDIR_ZED="$(mktemp -d)"
