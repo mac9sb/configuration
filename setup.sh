@@ -278,12 +278,13 @@ fi
 info "Step 6/${TOTAL_STEPS}: Installing Zed"
 
 ZED_APP="/Applications/Zed.app"
-ZED_DMG_VERSION="${ZED_DMG_VERSION:-0.222.4}" # update when a new stable Zed release is available (see https://zed.dev/releases)
+ZED_DMG_VERSION="${ZED_DMG_VERSION:-0.222.4}" # update when a new stable Zed release is available (see https://zed.dev/releases or override ZED_DMG_VERSION)
 case "$(uname -m)" in
     arm64|aarch64) ZED_ASSET="Zed-aarch64.dmg" ;;
     x86_64|amd64) ZED_ASSET="Zed-x86_64.dmg" ;;
     *) ZED_ASSET="" ;;
 esac
+ZED_DMG_URL=""
 if [ -n "$ZED_ASSET" ]; then
     ZED_DMG_URL="https://zed.dev/download-success?asset=${ZED_ASSET}&version=${ZED_DMG_VERSION}&channel=stable" # direct version+arch stable DMG (bypasses download page)
 fi
