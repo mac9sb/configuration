@@ -193,7 +193,7 @@ sync_cloudflared_ingress() {
 #  Ensure directories exist & initialise database
 # =============================================================================
 mkdir -p "$LOG_DIR"
-sudo mkdir -p "$APACHE_LOG_DIR" 2>/dev/null || true
+mkdir -p "$APACHE_LOG_DIR" 2>/dev/null || true
 
 db_init
 
@@ -395,10 +395,10 @@ rm -f "$_vhost_file" "$_default_file"
 _old_conf=""
 if [ -f "$CUSTOM_CONF" ]; then
     _old_conf="$(mktemp)"
-    sudo cp "$CUSTOM_CONF" "$_old_conf"
+    cp "$CUSTOM_CONF" "$_old_conf"
 fi
 
-sudo cp "$_conf_file" "$CUSTOM_CONF"
+cp "$_conf_file" "$CUSTOM_CONF"
 rm -f "$_conf_file"
 
 if sudo apachectl configtest >/dev/null 2>&1; then
@@ -406,10 +406,10 @@ if sudo apachectl configtest >/dev/null 2>&1; then
 else
     log "ERROR: New config failed configtest — rolling back"
     if [ -n "$_old_conf" ] && [ -f "$_old_conf" ]; then
-        sudo cp "$_old_conf" "$CUSTOM_CONF"
+        cp "$_old_conf" "$CUSTOM_CONF"
         log "Restored previous $CUSTOM_CONF"
     else
-        sudo rm -f "$CUSTOM_CONF"
+        rm -f "$CUSTOM_CONF"
         log "Removed broken $CUSTOM_CONF (no previous config to restore)"
     fi
     rm -f "$_old_conf"

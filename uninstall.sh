@@ -10,7 +10,7 @@ set -e
 #    - Removes Apache custom config and restores httpd.conf backup
 #    - Removes SQLite state database, backups, and logs from ~/Library/
 #    - Removes dotfile symlinks (preserves source files in utilities/)
-#    - Removes Cloudflare tunnel config symlink (preserves credentials)
+#    - Removes Cloudflare tunnel directory (~/.cloudflared)
 #    - Removes log rotation config (newsyslog)
 #    - Removes git hooks
 #    - Optionally removes installed CLI tools (cloudflared)
@@ -65,36 +65,39 @@ confirm() {
 #  Confirmation
 # =============================================================================
 
-printf "\n"
-printf "\033[1;31m=============================================================================\033[0m\n"
-printf "\033[1;31m  Developer Environment Teardown\033[0m\n"
-printf "\033[1;31m=============================================================================\033[0m\n"
-printf "\n"
-printf "  This will:\n"
-printf "    - Stop server-manager and all managed server processes\n"
-printf "    - Unload and remove all symlinked launchd agents\n"
-printf "      (server-manager, sites-watcher, backup, cloudflared)\n"
-printf "    - Remove Apache custom site configuration\n"
-printf "    - Remove SQLite state database (%s/state.db)\n" "$STATE_DIR"
-printf "    - Remove local backups (%s/backups/)\n" "$STATE_DIR"
-printf "    - Remove application logs (%s)\n" "$APP_LOG_DIR"
-printf "    - Remove dotfile symlinks (~/.zshrc, ~/.vimrc, etc.)\n"
-printf "    - Remove Cloudflare tunnel config symlink (~/.cloudflared/config.yml)\n"
-printf "    - Remove log rotation config (/etc/newsyslog.d/com.mac9sb.conf)\n"
-printf "    - Remove git hooks (.git/hooks/pre-push)\n"
-printf "    - Remove Apache site log directory (%s)\n" "$APACHE_LOG_DIR"
-if [ "$REMOVE_TOOLS" = true ]; then
-    printf "    - Remove cloudflared from /usr/local/bin\n"
-fi
-printf "\n"
-printf "  This will NOT:\n"
-printf "    - Delete submodule source code (sites/, tooling/)\n"
-printf "    - Delete template/script files (utilities/)\n"
-printf "    - Delete SSH keys (~/.ssh/id_ed25519)\n"
-printf "    - Delete Cloudflare tunnel credentials (~/.cloudflared/*.json)\n"
-printf "    - Delete R2 credentials (.env.local)\n"
-printf "    - Modify the git repository itself\n"
-printf "\n"
+printf '\n\033[1;31m=============================================================================\033[0m\n'
+printf '\033[1;31m  Developer Environment Teardown\033[0m\n'
+printf '\033[1;31m=============================================================================\033[0m\n'
+
+cat <<EOF
+
+  This will:
+    - Stop server-manager and all managed server processes
+    - Unload and remove all symlinked launchd agents
+      (server-manager, sites-watcher, backup, cloudflared)
+    - Remove Apache custom site configuration
+    - Remove SQLite state database ($STATE_DIR/state.db)
+    - Remove local backups ($STATE_DIR/backups/)
+    - Remove application logs ($APP_LOG_DIR)
+    - Remove dotfile symlinks (~/.zshrc, ~/.vimrc, ~/.config/zed/settings.json, etc.)
+    - Remove Cloudflare tunnel directory (~/.cloudflared)
+    - Remove passwordless sudo for apachectl (/etc/sudoers.d/mac9sb)
+    - Remove log rotation config (/etc/newsyslog.d/com.mac9sb.conf)
+    - Remove git hooks (.git/hooks/pre-push)
+    - Remove Apache site log directory ($APACHE_LOG_DIR)
+EOF
+[ "$REMOVE_TOOLS" = true ] && printf '    - Remove cloudflared from /usr/local/bin\n'
+
+cat <<'EOF'
+
+  This will NOT:
+    - Delete submodule source code (sites/, tooling/)
+    - Delete template/script files (utilities/)
+    - Delete SSH keys (~/.ssh/id_ed25519)
+    - Delete R2 credentials (.env.local)
+    - Modify the git repository itself
+
+EOF
 
 if ! confirm "Proceed with teardown?"; then
     info "Teardown cancelled."
@@ -246,37 +249,48 @@ else
     success "  ~/.ssh/config is not our symlink — skipping"
 fi
 
+# Zed editor settings
+_zed_settings_src="$DOTFILES_DIR/settings.json"
+_zed_settings_dest="$HOME/.config/zed/settings.json"
+if [ -L "$_zed_settings_dest" ] && [ "$(readlink "$_zed_settings_dest")" = "$_zed_settings_src" ]; then
+    rm -f "$_zed_settings_dest"
+    success "  Removed ~/.config/zed/settings.json symlink"
+
+    _backup=""
+    for _bak in "${_zed_settings_dest}".bak.*; do
+        [ -f "$_bak" ] && _backup="$_bak"
+    done
+    if [ -n "$_backup" ]; then
+        mv "$_backup" "$_zed_settings_dest"
+        success "  Restored ~/.config/zed/settings.json from backup"
+    fi
+elif [ -L "$_zed_settings_dest" ]; then
+    warn "  ~/.config/zed/settings.json is a symlink but points elsewhere — skipping"
+else
+    success "  ~/.config/zed/settings.json is not our symlink — skipping"
+fi
+
 # =============================================================================
 #  Step 5 — Remove Cloudflare tunnel config symlink & log rotation & git hooks
 # =============================================================================
 
 info "Step 5/8: Removing tunnel config, log rotation, and git hooks"
 
-# Cloudflare tunnel config symlink (preserve credentials)
-_cf_config="$HOME/.cloudflared/config.yml"
-_cf_config_src="$UTILITIES_DIR/cloudflared/config.yml"
-if [ -L "$_cf_config" ] && [ "$(readlink "$_cf_config")" = "$_cf_config_src" ]; then
-    rm -f "$_cf_config"
-    success "  Removed ~/.cloudflared/config.yml symlink"
-
-    _backup=""
-    for _bak in "${_cf_config}".bak.*; do
-        [ -f "$_bak" ] && _backup="$_bak"
-    done
-    if [ -n "$_backup" ]; then
-        mv "$_backup" "$_cf_config"
-        success "  Restored ~/.cloudflared/config.yml from backup"
-    fi
-elif [ -L "$_cf_config" ]; then
-    warn "  ~/.cloudflared/config.yml is a symlink but points elsewhere — skipping"
+# Cloudflare tunnel directory (credentials, config, cert)
+if [ -d "$HOME/.cloudflared" ]; then
+    rm -rf "$HOME/.cloudflared"
+    success "  Removed ~/.cloudflared (config, credentials, cert)"
 else
-    success "  ~/.cloudflared/config.yml is not our symlink — skipping"
+    success "  No ~/.cloudflared directory to remove"
 fi
 
-# Remove the rendered config.yml from the repo (it's gitignored)
-if [ -f "$_cf_config_src" ]; then
-    rm -f "$_cf_config_src"
-    success "  Removed rendered tunnel config from utilities/cloudflared/"
+# Passwordless sudo for apachectl
+_sudoers="/etc/sudoers.d/mac9sb"
+if [ -f "$_sudoers" ]; then
+    sudo rm -f "$_sudoers"
+    success "  Removed $_sudoers"
+else
+    success "  No sudoers config to remove"
 fi
 
 # Log rotation (newsyslog)
@@ -362,36 +376,37 @@ fi
 #  Summary
 # =============================================================================
 
-printf "\n"
-printf "\033[1;32m=============================================================================\033[0m\n"
-printf "\033[1;32m  Teardown Complete\033[0m\n"
-printf "\033[1;32m=============================================================================\033[0m\n"
-printf "\n"
-printf "  \033[1mRemoved:\033[0m\n"
-printf "    - launchd agents from %s/\n" "$LAUNCH_AGENTS_DIR"
-printf "      (server-manager, sites-watcher, backup, cloudflared)\n"
-printf "    - Application state from %s/\n" "$STATE_DIR"
-printf "    - Local backup archives from %s/backups/\n" "$STATE_DIR"
-printf "    - Application logs from %s/\n" "$APP_LOG_DIR"
-printf "    - Apache config (%s)\n" "$CUSTOM_CONF"
-printf "    - Dotfile symlinks\n"
-printf "    - Tunnel config symlink (~/.cloudflared/config.yml)\n"
-printf "    - Log rotation config (/etc/newsyslog.d/com.mac9sb.conf)\n"
-printf "    - Git hooks (pre-push)\n"
-printf "    - Rollback binaries (*.run, *.bak)\n"
-if [ "$REMOVE_TOOLS" = true ]; then
-    printf "    - CLI tools (cloudflared)\n"
-fi
-printf "\n"
-printf "  \033[1mPreserved:\033[0m\n"
-printf "    - Source code in sites/, tooling/\n"
-printf "    - Templates and scripts in utilities/\n"
-printf "    - Dotfile sources in utilities/dotfiles/\n"
-printf "    - SSH keys in ~/.ssh/\n"
-printf "    - Cloudflare tunnel credentials (~/.cloudflared/*.json)\n"
-printf "    - R2 credentials (.env.local)\n"
-printf "    - Git repository and submodule configuration\n"
-printf "\n"
-printf "  To re-setup: sudo ./setup.sh\n"
-printf "  To fully remove: rm -rf %s\n" "$DEV_DIR"
-printf "\n"
+printf '\n\033[1;32m=============================================================================\033[0m\n'
+printf '\033[1;32m  Teardown Complete\033[0m\n'
+printf '\033[1;32m=============================================================================\033[0m\n'
+
+printf '\n  \033[1mRemoved:\033[0m\n'
+cat <<EOF
+    - launchd agents from $LAUNCH_AGENTS_DIR/
+      (server-manager, sites-watcher, backup, cloudflared)
+    - Application state from $STATE_DIR/
+    - Local backup archives from $STATE_DIR/backups/
+    - Application logs from $APP_LOG_DIR/
+    - Apache config ($CUSTOM_CONF)
+    - Dotfile symlinks
+    - Cloudflare tunnel directory (~/.cloudflared)
+    - Passwordless sudo for apachectl (/etc/sudoers.d/mac9sb)
+    - Log rotation config (/etc/newsyslog.d/com.mac9sb.conf)
+    - Git hooks (pre-push)
+    - Rollback binaries (*.run, *.bak)
+EOF
+[ "$REMOVE_TOOLS" = true ] && printf '    - CLI tools (cloudflared)\n'
+
+printf '\n  \033[1mPreserved:\033[0m\n'
+cat <<EOF
+    - Source code in sites/, tooling/
+    - Templates and scripts in utilities/
+    - Dotfile sources in utilities/dotfiles/
+    - SSH keys in ~/.ssh/
+    - R2 credentials (.env.local)
+    - Git repository and submodule configuration
+
+  To re-setup: sudo ./setup.sh
+  To fully remove: rm -rf $DEV_DIR
+
+EOF

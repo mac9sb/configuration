@@ -66,6 +66,7 @@ TOTAL_STEPS=14
 
 # Initialise the state database early so db_* helpers are available
 mkdir -p "$STATE_DIR" "$LOG_DIR"
+chown -R "${SUDO_USER:-$(logname)}:staff" "$LOG_DIR"
 db_init
 
 # =============================================================================
@@ -148,8 +149,9 @@ info "Step 2/${TOTAL_STEPS}: Symlinking dotfiles"
 for _src in "$DOTFILES_DIR"/*; do
     [ ! -f "$_src" ] && continue
     _base="$(basename "$_src")"
-    # ssh_config is handled separately below (nested ~/.ssh/ directory)
+    # ssh_config and settings.json are handled separately (nested directories)
     [ "$_base" = "ssh_config" ] && continue
+    [ "$_base" = "settings.json" ] && continue
     _dest="$HOME/.${_base}"
 
     if [ -L "$_dest" ] && [ "$(readlink "$_dest")" = "$_src" ]; then
@@ -179,6 +181,23 @@ if [ -f "$_ssh_config_src" ]; then
         fi
         ln -sf "$_ssh_config_src" "$_ssh_config_dest"
         success "  ~/.ssh/config → $_ssh_config_src"
+    fi
+fi
+
+# Zed editor settings (nested directory)
+_zed_settings_src="$DOTFILES_DIR/settings.json"
+_zed_settings_dest="$HOME/.config/zed/settings.json"
+if [ -f "$_zed_settings_src" ]; then
+    mkdir -p "$HOME/.config/zed"
+    if [ -L "$_zed_settings_dest" ] && [ "$(readlink "$_zed_settings_dest")" = "$_zed_settings_src" ]; then
+        success "  ~/.config/zed/settings.json already symlinked"
+    else
+        if [ -e "$_zed_settings_dest" ] && [ ! -L "$_zed_settings_dest" ]; then
+            mv "$_zed_settings_dest" "${_zed_settings_dest}.bak.$(date +%Y%m%d%H%M%S)"
+            warn "  Backed up existing ~/.config/zed/settings.json"
+        fi
+        ln -sf "$_zed_settings_src" "$_zed_settings_dest"
+        success "  ~/.config/zed/settings.json → $_zed_settings_src"
     fi
 fi
 
@@ -403,7 +422,25 @@ else
 fi
 
 sudo mkdir -p "$APACHE_LOG_DIR"
-sudo chown root:wheel "$APACHE_LOG_DIR"
+sudo chown "${SUDO_USER:-$(logname)}:staff" "$APACHE_LOG_DIR"
+
+# Ensure custom.conf exists and is user-writable (so sites-watcher can update
+# it without sudo — only apachectl needs elevated privileges)
+if [ ! -f "$CUSTOM_CONF" ]; then
+    sudo touch "$CUSTOM_CONF"
+fi
+sudo chown "${SUDO_USER:-$(logname)}:staff" "$CUSTOM_CONF"
+
+# Passwordless sudo for apachectl (used by sites-watcher on every scan)
+_sudoers="/etc/sudoers.d/mac9sb"
+if [ ! -f "$_sudoers" ]; then
+    printf '%s ALL=(root) NOPASSWD: /usr/sbin/apachectl\n' "${SUDO_USER:-$(logname)}" \
+        | sudo tee "$_sudoers" >/dev/null
+    sudo chmod 0440 "$_sudoers"
+    success "  Installed passwordless sudo for apachectl ($_sudoers)"
+else
+    success "  Passwordless sudo for apachectl already configured"
+fi
 
 # Build custom.conf by scanning sites/ for static (.output) and server
 # (.build/release/<exec>) projects — no hardcoded arrays.
@@ -576,23 +613,24 @@ rm -f "$_vhost_file" "$_default_file"
 _old_conf=""
 if [ -f "$CUSTOM_CONF" ]; then
     _old_conf="$(mktemp)"
-    sudo cp "$CUSTOM_CONF" "$_old_conf"
+    cp "$CUSTOM_CONF" "$_old_conf"
 fi
 
-sudo cp "$_conf_file" "$CUSTOM_CONF"
+cp "$_conf_file" "$CUSTOM_CONF"
 rm -f "$_conf_file"
 
 if sudo apachectl configtest >/dev/null 2>&1; then
     success "  Wrote $CUSTOM_CONF (configtest passed)"
 else
-    warn "  New config failed configtest — rolling back"
     if [ -n "$_old_conf" ] && [ -f "$_old_conf" ]; then
-        sudo cp "$_old_conf" "$CUSTOM_CONF"
-        success "  Restored previous $CUSTOM_CONF"
+        cp "$_old_conf" "$CUSTOM_CONF"
+        printf '\033[1;31m[FATAL]\033[0m Apache configtest failed — rolled back to previous %s\n' "$CUSTOM_CONF" >&2
     else
-        sudo rm -f "$CUSTOM_CONF"
-        warn "  Removed broken $CUSTOM_CONF (no previous config to restore)"
+        rm -f "$CUSTOM_CONF"
+        printf '\033[1;31m[FATAL]\033[0m Apache configtest failed — removed broken %s\n' "$CUSTOM_CONF" >&2
     fi
+    rm -f "$_old_conf" 2>/dev/null
+    exit 1
 fi
 rm -f "$_old_conf" 2>/dev/null
 
@@ -671,14 +709,20 @@ else
     success "  ~/.cloudflared/config.yml → $_tunnel_config"
 fi
 
+# Ensure ~/.cloudflared is owned by the real user (setup runs as sudo)
+chown -R "${SUDO_USER:-$(logname)}:staff" "$HOME/.cloudflared"
+
 # Check if credentials are already in place
 if [ -f "$HOME/.cloudflared/maclong.json" ]; then
     success "  Tunnel credentials found"
 else
     warn "  No tunnel credentials at ~/.cloudflared/maclong.json"
-    warn "  After setup, run:"
+    warn "  New tunnel:"
     warn "    cloudflared tunnel login"
-    warn "    cloudflared tunnel create maclong --credentials-file ~/.cloudflared/maclong.json"
+    warn "    cloudflared tunnel create --credentials-file ~/.cloudflared/maclong.json maclong"
+    warn "  Existing tunnel:"
+    warn "    cloudflared tunnel login"
+    warn "    cloudflared tunnel token --cred-file ~/.cloudflared/maclong.json maclong"
 fi
 
 # =============================================================================
@@ -711,12 +755,7 @@ info "Step 12/${TOTAL_STEPS}: Symlinking launchd agents"
 # backup.plist          → daily SQLite backup to R2 at 03:00
 # cloudflared.plist     → runs the Cloudflare tunnel (only if tunnel is configured)
 
-_plist_list="server-manager.plist sites-watcher.plist backup.plist"
-
-# Only install cloudflared agent if tunnel is configured
-if [ -f "$HOME/.cloudflared/maclong.json" ]; then
-    _plist_list="$_plist_list cloudflared.plist"
-fi
+_plist_list="server-manager.plist sites-watcher.plist backup.plist cloudflared.plist"
 
 for _plist_name in $_plist_list; do
     _src="$LAUNCHD_DIR/$_plist_name"
@@ -759,7 +798,8 @@ if sudo apachectl configtest 2>&1; then
     sudo apachectl restart
     success "Apache restarted"
 else
-    warn "Apache configuration test failed — check $CUSTOM_CONF and $HTTPD_CONF"
+    printf '\033[1;31m[FATAL]\033[0m Apache configtest failed — check %s and %s\n' "$CUSTOM_CONF" "$HTTPD_CONF" >&2
+    exit 1
 fi
 
 # =============================================================================
@@ -844,9 +884,15 @@ if [ ! -f "$HOME/.cloudflared/maclong.json" ]; then
         printf "  \033[1mAction required:\033[0m\n"
         _has_actions=true
     fi
-    printf "    • Set up Cloudflare tunnel:\n"
-    printf "        cloudflared tunnel login\n"
-    printf "        cloudflared tunnel create maclong --credentials-file ~/.cloudflared/maclong.json\n"
+    cat <<'EOF'
+    • Set up Cloudflare tunnel:
+      New tunnel:
+        cloudflared tunnel login
+        cloudflared tunnel create --credentials-file ~/.cloudflared/maclong.json maclong
+      Existing tunnel:
+        cloudflared tunnel login
+        cloudflared tunnel token --cred-file ~/.cloudflared/maclong.json maclong
+EOF
 fi
 
 if [ ! -f "$_r2_creds" ]; then

@@ -1,4 +1,9 @@
 # --- {{SITE_NAME}} (server binary, reverse proxy to :{{PORT}}) ---
+
+# --- Proxy timeouts (tuned for dev) ---
+ProxyTimeout 300
+SetEnv proxy-initial-not-pooled 1
+
 <Location /{{SITE_NAME}}/>
     ProxyPass        http://127.0.0.1:{{PORT}}/
     ProxyPassReverse http://127.0.0.1:{{PORT}}/
@@ -7,10 +12,6 @@
     RequestHeader set X-Forwarded-Proto "https"
     RequestHeader set X-Forwarded-Port "443"
     ProxyAddHeaders On
-
-    # --- Proxy timeouts (tuned for dev) ---
-    ProxyTimeout 300
-    SetEnv proxy-initial-not-pooled 1
 
     Require all granted
 </Location>

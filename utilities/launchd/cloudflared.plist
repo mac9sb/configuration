@@ -8,11 +8,8 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/cloudflared</string>
-        <string>tunnel</string>
-        <string>--config</string>
-        <string>/Users/mac/.cloudflared/config.yml</string>
-        <string>run</string>
+        <string>/bin/sh</string>
+        <string>/Users/mac/Developer/utilities/scripts/cloudflared-launcher.sh</string>
     </array>
 
     <key>RunAtLoad</key>
