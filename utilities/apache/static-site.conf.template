@@ -1,5 +1,6 @@
 # --- {{SITE_NAME}} (static, served from .output) ---
-Alias /{{SITE_NAME}} "{{OUTPUT_DIR}}"
+RedirectMatch 301 ^/{{SITE_NAME}}$ /{{SITE_NAME}}/
+Alias /{{SITE_NAME}}/ "{{OUTPUT_DIR}}/"
 <Directory "{{OUTPUT_DIR}}">
     Options Indexes FollowSymLinks MultiViews
     AllowOverride All
@@ -8,8 +9,12 @@ Alias /{{SITE_NAME}} "{{OUTPUT_DIR}}"
     RewriteEngine On
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^(.+[^/])$ /{{SITE_NAME}}/$1/ [R=301,L]
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule . - [L]
+    RewriteCond %{REQUEST_URI} !\.html$ [NC]
+    RewriteCond %{REQUEST_FILENAME}.html -f
+    RewriteRule ^(.+)$ /{{SITE_NAME}}/$1.html [L]
     RewriteRule . /{{SITE_NAME}}/index.html [L]
 </Directory>
 ErrorLog  "{{LOG_DIR}}/{{SITE_NAME}}-error.log"

@@ -497,7 +497,7 @@ for _dir in "$SITES_DIR"/*/; do
 
     if [ -d "$_dir/.output" ]; then
         _output_dir="$_dir/.output"
-        chmod -R o+r "$_output_dir" 2>/dev/null || true
+        chmod -R o+rX "$_output_dir" 2>/dev/null || true
         db_set_site "$_name" "static"
 
         # Path-based entry (always — for localhost dev access)
@@ -795,7 +795,7 @@ info "Step 13/${TOTAL_STEPS}: Testing and restarting Apache"
 for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
     if [ -d "$_dir/.output" ]; then
-        chmod -R o+r "$_dir/.output" 2>/dev/null || true
+        chmod -R o+rX "$_dir/.output" 2>/dev/null || true
         chmod o+x "$DEV_DIR" "$SITES_DIR" "$_dir" "$_dir/.output" 2>/dev/null || true
     fi
 done

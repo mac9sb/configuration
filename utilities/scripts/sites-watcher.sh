@@ -424,7 +424,7 @@ rm -f "$_old_conf"
 printf '%s' "$current_state" | while IFS=: read -r repo type; do
     [ "$type" != "static" ] && continue
     _dir="$SITES_DIR/$repo"
-    chmod -R o+r "$_dir/.output" 2>/dev/null || true
+    chmod -R o+rX "$_dir/.output" 2>/dev/null || true
     chmod o+x "$DEV_DIR" "$SITES_DIR" "$_dir" "$_dir/.output" 2>/dev/null || true
 done
 
