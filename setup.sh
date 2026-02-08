@@ -295,28 +295,32 @@ else
     info "Downloading Zed..."
     case "$ZED_DMG_URL" in
         https://*)
-            if curl --proto '=https' --proto-redir '=https' --tlsv1.2 -sL --fail --max-time 60 "$ZED_DMG_URL" -o "$_zed_dmg"; then
+            if curl --proto '=https' --proto-redir '=https' --tlsv1.2 --progress-bar -L --fail --max-time 60 "$ZED_DMG_URL" -o "$_zed_dmg"; then
                 mkdir -p "$_zed_mount"
-                if hdiutil attach "$_zed_dmg" -nobrowse -quiet -mountpoint "$_zed_mount"; then
-                    if [ -d "$_zed_mount/Zed.app" ]; then
-                        : > "$_zed_verify_log"
-                        if codesign --verify --deep --strict --verbose=2 "$_zed_mount/Zed.app" >"$_zed_verify_log" 2>&1 && \
-                           spctl --assess --type execute "$_zed_mount/Zed.app" >>"$_zed_verify_log" 2>&1; then
-                            if sudo ditto "$_zed_mount/Zed.app" "$ZED_APP"; then
-                                success "Zed installed to $ZED_APP"
+                if hdiutil verify "$_zed_dmg" -quiet; then
+                    if hdiutil attach "$_zed_dmg" -nobrowse -quiet -mountpoint "$_zed_mount"; then
+                        if [ -d "$_zed_mount/Zed.app" ]; then
+                            touch "$_zed_verify_log"
+                            if codesign --verify --deep --strict --verbose=2 "$_zed_mount/Zed.app" >"$_zed_verify_log" 2>&1 && \
+                               spctl --assess --type execute "$_zed_mount/Zed.app" >>"$_zed_verify_log" 2>&1; then
+                                if sudo ditto "$_zed_mount/Zed.app" "$ZED_APP"; then
+                                    success "Zed installed to $ZED_APP"
+                                else
+                                    warn "Failed to install Zed (sudo may have failed) — install manually later"
+                                fi
                             else
-                                warn "Failed to install Zed (sudo may have failed) — install manually later"
+                                warn "Zed signature verification failed — install manually later"
+                                cat "$_zed_verify_log"
                             fi
                         else
-                            warn "Zed signature verification failed — install manually later"
-                            cat "$_zed_verify_log"
+                            warn "Zed app not found in DMG — install manually later"
                         fi
+                        hdiutil detach "$_zed_mount" -quiet || true
                     else
-                        warn "Zed app not found in DMG — install manually later"
+                        warn "Failed to mount Zed DMG — install manually later"
                     fi
-                    hdiutil detach "$_zed_mount" -quiet || true
                 else
-                    warn "Failed to mount Zed DMG — install manually later"
+                    warn "Downloaded Zed DMG failed verification — install manually later"
                 fi
             else
                 warn "Failed to download Zed — install manually later"
