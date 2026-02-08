@@ -581,7 +581,7 @@ for _dir in "$SITES_DIR"/*/; do
         _exec_name="$(get_exec_name "$_dir")" || true
         _binary=""
         if [ -n "$_exec_name" ]; then
-            _binary="$(get_release_binary "$_dir" "$_exec_name")"
+            _binary="$(get_release_binary "$_dir" "$_exec_name")" || true
         fi
         _has_binary=false
         if [ -n "$_binary" ] && [ -f "$_binary" ]; then
