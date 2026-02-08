@@ -346,7 +346,8 @@ for _dir in "$SITES_DIR"/*/; do
             continue
         fi
 
-        _binary="$(get_release_binary "$_dir" "$_exec_name")" || _binary="$_dir/.build/release/$_exec_name"
+        _default_binary="$_dir/.build/release/$_exec_name"
+        _binary="$(get_release_binary "$_dir" "$_exec_name")" || _binary="$_default_binary"
 
         # Preserve current run binary as backup before rebuilding
         if [ -f "${_binary}.run" ]; then
@@ -369,13 +370,15 @@ for _dir in "$SITES_DIR"/*/; do
         fi
         rm -f "$_build_log"
 
-        _binary="$(get_release_binary "$_dir" "$_exec_name")" || _binary="$_dir/.build/release/$_exec_name"
+        # Re-resolve the binary path after build (SwiftPM may use target-triple output).
+        _binary="$(get_release_binary "$_dir" "$_exec_name")" || _binary="$_default_binary"
 
         # Classify by running: if the binary exits and produces .output
         # it's a static site generator. If it blocks, it's a server.
         if [ ! -d "$_dir/.output" ] && [ -f "$_binary" ]; then
             info "  Classifying $_name (timeout ${CLASSIFY_TIMEOUT}s)..."
-            if run_with_timeout "$CLASSIFY_TIMEOUT" sh -c "cd \"$_dir\" && \"$_binary\"" 2>/dev/null; then
+            # Pass "sh" as $0 so $_dir becomes $1 and $_binary becomes $2 inside the script.
+            if run_with_timeout "$CLASSIFY_TIMEOUT" sh -c 'cd "$1" && exec "$2"' sh "$_dir" "$_binary" 2>/dev/null; then
                 if [ -d "$_dir/.output" ]; then
                     success "  $_name → static site (.output generated)"
                 else
@@ -530,7 +533,7 @@ for _dir in "$SITES_DIR"/*/; do
         _exec_name="$(get_exec_name "$_dir")" || true
         _binary=""
         if [ -n "$_exec_name" ]; then
-            _binary="$(get_release_binary "$_dir" "$_exec_name")" || _binary=""
+            _binary="$(get_release_binary "$_dir" "$_exec_name")"
         fi
         _has_binary=false
         if [ -n "$_binary" ] && [ -f "$_binary" ]; then

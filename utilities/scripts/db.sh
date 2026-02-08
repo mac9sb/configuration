@@ -363,11 +363,17 @@ get_release_binary() {
     fi
 
     if [ -d "$_dir/.build" ]; then
-        for _candidate in "$_dir"/.build/*/release/"$_exec"; do
-            if [ -f "$_candidate" ]; then
-                printf '%s' "$_candidate"
-                return 0
-            fi
+        set -- "$_dir"/.build/*/release/"$_exec"
+        [ -f "$1" ] || return 1
+        for _candidate in "$@"; do
+            _parent_dir="$(dirname "$(dirname "$_candidate")")"
+            _triple_dir="$(basename "$_parent_dir")"
+            case "$_triple_dir" in
+                *-*-*) ;;
+                *) continue ;;
+            esac
+            printf '%s' "$_candidate"
+            return 0
         done
     fi
 
