@@ -278,7 +278,7 @@ fi
 info "Step 6/${TOTAL_STEPS}: Installing Zed"
 
 ZED_APP="/Applications/Zed.app"
-ZED_DMG_URL="https://zed.dev/download" # redirects to the latest DMG
+ZED_DMG_URL="https://zed.dev/download-success?asset=Zed-aarch64.dmg&version=0.222.4&channel=stable" # direct stable arm64 DMG
 
 if [ -d "$ZED_APP" ]; then
     success "Zed already installed"
