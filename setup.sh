@@ -162,7 +162,7 @@ for _src in "$DOTFILES_DIR"/*; do
             warn "  Backed up existing ~/.${_base}"
         fi
         ln -sf "$_src" "$_dest"
-        success "  ~/.${_base} → $_src"
+        success "  ~/.${_base} -> $_src"
     fi
 done
 
@@ -180,7 +180,7 @@ if [ -f "$_ssh_config_src" ]; then
             warn "  Backed up existing ~/.ssh/config"
         fi
         ln -sf "$_ssh_config_src" "$_ssh_config_dest"
-        success "  ~/.ssh/config → $_ssh_config_src"
+        success "  ~/.ssh/config -> $_ssh_config_src"
     fi
 fi
 
@@ -379,8 +379,8 @@ done
 # Build any Swift package found under sites/
 # All sites are built in release mode. After building, the binary is run
 # with a timeout to classify:
-#   - Exits cleanly and produces .output → static site
-#   - Does not exit within the timeout   → server (launchd will manage)
+#   - Exits cleanly and produces .output -> static site
+#   - Does not exit within the timeout   -> server (launchd will manage)
 for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
     _name="$(basename "$_dir")"
@@ -425,7 +425,7 @@ for _dir in "$SITES_DIR"/*/; do
             # Pass "sh" as $0 so $_dir becomes $1 and $_binary becomes $2 inside the script.
             if run_with_timeout "$CLASSIFY_TIMEOUT" sh -c 'cd "$1" && exec "$2"' sh "$_dir" "$_binary" 2>/dev/null; then
                 if [ -d "$_dir/.output" ]; then
-                    success "  $_name → static site (.output generated)"
+                    success "  $_name -> static site (.output generated)"
                 else
                     success "  $_name exited cleanly (no .output produced)"
                 fi
@@ -435,9 +435,9 @@ for _dir in "$SITES_DIR"/*/; do
         fi
 
         if [ -d "$_dir/.output" ]; then
-            success "  $_name → static site"
+            success "  $_name -> static site"
         elif [ -f "$_binary" ]; then
-            success "  $_name → server binary (launchd will manage)"
+            success "  $_name -> server binary (launchd will manage)"
         fi
     fi
 done
@@ -505,10 +505,10 @@ fi
 #
 # Domain routing is derived from directory names + primary domain from
 # the cloudflared config (# primary-domain: maclong.dev):
-#   sites/maclong.dev/   → VirtualHost maclong.dev         (custom domain)
-#   sites/api-thing/     → VirtualHost api-thing.maclong.dev (subdomain)
-#   sites/cool-app.com/  → VirtualHost cool-app.com        (custom domain)
-#   All sites            → localhost/site-name/             (path-based dev)
+#   sites/maclong.dev/   -> VirtualHost maclong.dev         (custom domain)
+#   sites/api-thing/     -> VirtualHost api-thing.maclong.dev (subdomain)
+#   sites/cool-app.com/  -> VirtualHost cool-app.com        (custom domain)
+#   All sites            -> localhost/site-name/             (path-based dev)
 
 # Parse primary domain from cloudflared config
 _cf_config="$CLOUDFLARED_DIR/config.yml"
@@ -568,9 +568,9 @@ for _dir in "$SITES_DIR"/*/; do
                 "LOG_DIR=$APACHE_LOG_DIR" \
                 >> "$_vhost_file"
             printf '\n' >> "$_vhost_file"
-            success "  $_domain → static ($_name)"
+            success "  $_domain -> static ($_name)"
         else
-            success "  localhost/$_name → static (path-based only)"
+            success "  localhost/$_name -> static (path-based only)"
         fi
 
     else
@@ -607,9 +607,9 @@ for _dir in "$SITES_DIR"/*/; do
                     "LOG_DIR=$APACHE_LOG_DIR" \
                     >> "$_vhost_file"
                 printf '\n' >> "$_vhost_file"
-                success "  $_domain → proxy :$_port ($_name)"
+                success "  $_domain -> proxy :$_port ($_name)"
             else
-                success "  localhost/$_name → proxy :$_port (path-based only)"
+                success "  localhost/$_name -> proxy :$_port (path-based only)"
             fi
         fi
     fi
@@ -623,9 +623,9 @@ cat > "$_conf_file" <<APACHE_HEADER
 #
 #  Primary domain: ${PRIMARY_DOMAIN:-"(not configured)"}
 #  Routing:
-#    sites/maclong.dev/   → VirtualHost maclong.dev              (custom domain)
-#    sites/api-thing/     → VirtualHost api-thing.${PRIMARY_DOMAIN:-"???"}  (subdomain)
-#    All sites            → localhost/site-name/                  (path-based dev)
+#    sites/maclong.dev/   -> VirtualHost maclong.dev              (custom domain)
+#    sites/api-thing/     -> VirtualHost api-thing.${PRIMARY_DOMAIN:-"???"}  (subdomain)
+#    All sites            -> localhost/site-name/                  (path-based dev)
 # =============================================================================
 
 APACHE_HEADER
@@ -710,13 +710,13 @@ _legacy_state="$STATE_DIR/sites-state"
 if [ -f "$_legacy_ports" ]; then
     db_import_port_assignments "$_legacy_ports"
     mv "$_legacy_ports" "${_legacy_ports}.migrated"
-    success "  Migrated legacy port-assignments → database"
+    success "  Migrated legacy port-assignments -> database"
 fi
 
 if [ -f "$_legacy_state" ]; then
     db_import_sites_state "$_legacy_state"
     mv "$_legacy_state" "${_legacy_state}.migrated"
-    success "  Migrated legacy sites-state → database"
+    success "  Migrated legacy sites-state -> database"
 fi
 
 # Remove legacy PID directory and files (now tracked in the database)
@@ -738,7 +738,7 @@ for _dir in "$SITES_DIR"/*/; do
     _binary="$(get_release_binary "$_dir" "$_exec_name")" || continue
 
     _port="$(db_get_port "$_name")"
-    success "  Server: $_name → port $_port (binary: $_exec_name)"
+    success "  Server: $_name -> port $_port (binary: $_exec_name)"
 done
 
 chmod +x "$SCRIPTS_DIR/restart-server.sh" 2>/dev/null || true
@@ -756,7 +756,7 @@ mkdir -p "$HOME/.cloudflared"
 
 _tunnel_config="$CLOUDFLARED_DIR/config.yml"
 
-# Symlink ~/.cloudflared/config.yml → in-repo static config
+# Symlink ~/.cloudflared/config.yml -> in-repo static config
 if [ -L "$HOME/.cloudflared/config.yml" ] && \
    [ "$(readlink "$HOME/.cloudflared/config.yml")" = "$_tunnel_config" ]; then
     success "  ~/.cloudflared/config.yml already symlinked"
@@ -766,7 +766,7 @@ else
         warn "  Backed up existing ~/.cloudflared/config.yml"
     fi
     ln -sf "$_tunnel_config" "$HOME/.cloudflared/config.yml"
-    success "  ~/.cloudflared/config.yml → $_tunnel_config"
+    success "  ~/.cloudflared/config.yml -> $_tunnel_config"
 fi
 
 # Ensure ~/.cloudflared and ~/.ssh are owned by the real user (setup runs as sudo)
@@ -811,10 +811,10 @@ fi
 info "Step 14/${TOTAL_STEPS}: Symlinking launchd agents"
 
 # All plists are static files with literal paths — symlinked for easy management.
-# server-manager.plist  → supervises all server binaries (inferred from filesystem)
-# sites-watcher.plist   → watches ~/Developer/sites and updates Apache config
-# backup.plist          → daily SQLite backup to R2 at 03:00
-# cloudflared.plist     → runs the Cloudflare tunnel (only if tunnel is configured)
+# server-manager.plist  -> supervises all server binaries (inferred from filesystem)
+# sites-watcher.plist   -> watches ~/Developer/sites and updates Apache config
+# backup.plist          -> daily SQLite backup to R2 at 03:00
+# cloudflared.plist     -> runs the Cloudflare tunnel (only if tunnel is configured)
 
 _plist_list="server-manager.plist sites-watcher.plist backup.plist cloudflared.plist"
 
@@ -837,7 +837,7 @@ for _plist_name in $_plist_list; do
 
     # Load the agent
     launchctl bootstrap "gui/${UID_NUM}" "$_dest" 2>/dev/null || launchctl load "$_dest" 2>/dev/null || true
-    success "  $_label → symlinked and loaded"
+    success "  $_label -> symlinked and loaded"
 done
 
 # =============================================================================
@@ -901,17 +901,17 @@ for _dir in "$SITES_DIR"/*/; do
     _exec_name="$(get_exec_name "$_dir")" || true
     if [ -d "$_dir/.output" ]; then
         if [ -n "$_domain" ]; then
-            printf "    ✓ %s → static (http://%s/)\n" "$_name" "$_domain"
+            printf "    ✓ %s -> static (http://%s/)\n" "$_name" "$_domain"
         else
-            printf "    ✓ %s → static (http://localhost/%s/)\n" "$_name" "$_name"
+            printf "    ✓ %s -> static (http://localhost/%s/)\n" "$_name" "$_name"
         fi
         _any_sites=true
     elif [ -n "$_exec_name" ] && _binary="$(get_release_binary "$_dir" "$_exec_name")"; then
         _port="$(db_get_port_if_exists "$_name")"
         if [ -n "$_domain" ]; then
-            printf "    ✓ %s → server :%s (http://%s/)\n" "$_name" "${_port:-?}" "$_domain"
+            printf "    ✓ %s -> server :%s (http://%s/)\n" "$_name" "${_port:-?}" "$_domain"
         else
-            printf "    ✓ %s → server :%s (http://localhost/%s/)\n" "$_name" "${_port:-?}" "$_name"
+            printf "    ✓ %s -> server :%s (http://localhost/%s/)\n" "$_name" "${_port:-?}" "$_name"
         fi
         _any_sites=true
     else
