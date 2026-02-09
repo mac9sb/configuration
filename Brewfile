@@ -1,9 +1,5 @@
 tap "anomalyco/tap"
 
-tap "homebrew/cask"
-tap "homebrew/core"
-tap "homebrew/bundle"
-
 brew "cloudflared"
 brew "gh"
 brew "mas"
