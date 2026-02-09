@@ -143,21 +143,21 @@ jobs:
           done
 
       # ── Verify cloudflared config ────────────────────────────────────────
-      - name: Verify cloudflared config symlink
+      - name: Verify cloudflared config file
         run: |
           export HOME="$(dirname "$GITHUB_WORKSPACE")"
-          CF_SRC="$HOME/Developer/utilities/cloudflared/config.yml"
           CF_DEST="$HOME/.cloudflared/config.yml"
 
-          if [ ! -L "$CF_DEST" ]; then
-            echo "FAIL: ~/.cloudflared/config.yml is not a symlink"
+          if [ ! -f "$CF_DEST" ]; then
+            echo "FAIL: ~/.cloudflared/config.yml not found"
             exit 1
           fi
-          if [ "$(readlink "$CF_DEST")" != "$CF_SRC" ]; then
-            echo "FAIL: ~/.cloudflared/config.yml points to $(readlink "$CF_DEST"), expected $CF_SRC"
+          if grep -q "^credentials-file: ${HOME}/\\.cloudflared/maclong\\.json$" "$CF_DEST"; then
+            echo "OK: credentials-file path is user-specific"
+          else
+            echo "FAIL: credentials-file path not rendered correctly"
             exit 1
           fi
-          echo "OK: ~/.cloudflared/config.yml -> $CF_SRC"
 
       - name: Verify cloudflared config content
         run: |

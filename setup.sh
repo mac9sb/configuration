@@ -83,6 +83,17 @@ command_exists() { command -v "$1" >/dev/null 2>&1; }
 # Renders a template file by replacing {{KEY}} placeholders with values.
 # Usage: render_template <template_file> KEY=value KEY2=value2 ...
 # Output is written to stdout.
+escape_sed_replacement() {
+    printf '%s' "$1" | sed -e 's/[\\/&|]/\\&/g'
+}
+
+is_safe_identifier() {
+    case "$1" in
+        *[!A-Za-z0-9._-]*|'') return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
 render_template() {
     _tmpl_file="$1"
     shift
@@ -95,6 +106,7 @@ render_template() {
     for _pair in "$@"; do
         _key="${_pair%%=*}"
         _val="${_pair#*=}"
+        _val="$(escape_sed_replacement "$_val")"
         _rendered="$(printf '%s' "$_rendered" | sed "s|{{${_key}}}|${_val}|g")"
     done
     printf '%s\n' "$_rendered"
@@ -388,6 +400,10 @@ done
 for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
     _name="$(basename "$_dir")"
+    if ! is_safe_identifier "$_name"; then
+        warn "  $_name: invalid site name — skipping"
+        continue
+    fi
     if [ -f "$_dir/Package.swift" ]; then
         _exec_name="$(get_exec_name "$_dir")" || true
         if [ -z "$_exec_name" ]; then
@@ -521,6 +537,11 @@ if [ -f "$_cf_config" ]; then
     PRIMARY_DOMAIN="$(sed -n 's/^# *primary-domain: *//p' "$_cf_config" | head -1 | tr -d '[:space:]')"
 fi
 
+if [ -n "$PRIMARY_DOMAIN" ] && ! is_safe_identifier "$PRIMARY_DOMAIN"; then
+    warn "  Invalid primary-domain in cloudflared config — subdomain routing disabled"
+    PRIMARY_DOMAIN=""
+fi
+
 if [ -n "$PRIMARY_DOMAIN" ]; then
     success "  Primary domain: $PRIMARY_DOMAIN"
 else
@@ -548,6 +569,10 @@ _default_file="$(mktemp)"
 for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
     _name="$(basename "$_dir")"
+    if ! is_safe_identifier "$_name"; then
+        warn "  $_name: invalid site name — skipping"
+        continue
+    fi
 
     if [ -d "$_dir/.output" ]; then
         _output_dir="$_dir/.output"
@@ -733,6 +758,10 @@ rm -f "$STATE_DIR/server-manager.pid" "$STATE_DIR/restart-request" 2>/dev/null
 for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
     _name="$(basename "$_dir")"
+    if ! is_safe_identifier "$_name"; then
+        warn "  $_name: invalid site name — skipping"
+        continue
+    fi
 
     # Only server sites (have binary but no .output)
     [ -d "$_dir/.output" ] && continue
@@ -758,19 +787,18 @@ info "Configuring Cloudflare tunnel"
 mkdir -p "$HOME/.cloudflared"
 
 _tunnel_config="$CLOUDFLARED_DIR/config.yml"
+_tunnel_dest="$HOME/.cloudflared/config.yml"
 
-# Symlink ~/.cloudflared/config.yml -> in-repo static config
-if [ -L "$HOME/.cloudflared/config.yml" ] && \
-   [ "$(readlink "$HOME/.cloudflared/config.yml")" = "$_tunnel_config" ]; then
-    success "  ~/.cloudflared/config.yml already symlinked"
-else
-    if [ -e "$HOME/.cloudflared/config.yml" ] && [ ! -L "$HOME/.cloudflared/config.yml" ]; then
-        mv "$HOME/.cloudflared/config.yml" "$HOME/.cloudflared/config.yml.bak.$(date +%Y%m%d%H%M%S)"
-        warn "  Backed up existing ~/.cloudflared/config.yml"
-    fi
-    ln -sf "$_tunnel_config" "$HOME/.cloudflared/config.yml"
-    success "  ~/.cloudflared/config.yml -> $_tunnel_config"
+# Render ~/.cloudflared/config.yml from in-repo template
+if [ -L "$_tunnel_dest" ]; then
+    rm -f "$_tunnel_dest"
 fi
+if [ -e "$_tunnel_dest" ] && [ ! -L "$_tunnel_dest" ]; then
+    mv "$_tunnel_dest" "$_tunnel_dest.bak.$(date +%Y%m%d%H%M%S)"
+    warn "  Backed up existing ~/.cloudflared/config.yml"
+fi
+render_template "$_tunnel_config" "HOME=$HOME" > "$_tunnel_dest"
+success "  Wrote $_tunnel_dest from template"
 
 # Ensure ~/.cloudflared and ~/.ssh are owned by the real user (setup runs as sudo)
 chown -R "${SUDO_USER:-$(logname)}:staff" "$HOME/.cloudflared"
@@ -835,7 +863,10 @@ _newsyslog_src="$NEWSYSLOG_DIR/com.mac9sb.conf"
 _newsyslog_dest="/etc/newsyslog.d/com.mac9sb.conf"
 
 if [ -f "$_newsyslog_src" ]; then
-    sudo cp "$_newsyslog_src" "$_newsyslog_dest"
+    render_template "$_newsyslog_src" \
+        "HOME=$HOME" \
+        "USER=${SUDO_USER:-$(logname)}" \
+        | sudo tee "$_newsyslog_dest" >/dev/null
     sudo chown root:wheel "$_newsyslog_dest"
     sudo chmod 644 "$_newsyslog_dest"
     success "  Installed $_newsyslog_dest"
@@ -849,7 +880,7 @@ fi
 
 info "Symlinking launchd agents"
 
-# All plists are static files with literal paths — symlinked for easy management.
+# All plists are templates with literal paths — rendered per-user into LaunchAgents.
 # server-manager.plist  -> supervises all server binaries (inferred from filesystem)
 # sites-watcher.plist   -> watches ~/Developer/sites and updates Apache config
 # backup.plist          -> daily SQLite backup to R2 at 03:00
@@ -871,12 +902,15 @@ for _plist_name in $_plist_list; do
     # Unload if already running
     launchctl bootout "gui/${UID_NUM}/${_label}" 2>/dev/null || true
 
-    # Symlink into LaunchAgents
-    ln -sf "$_src" "$_dest"
+    # Render into LaunchAgents
+    render_template "$_src" \
+        "HOME=$HOME" \
+        "USER=${SUDO_USER:-$(logname)}" \
+        > "$_dest"
 
     # Load the agent
     launchctl bootstrap "gui/${UID_NUM}" "$_dest" 2>/dev/null || launchctl load "$_dest" 2>/dev/null || true
-    success "  $_label -> symlinked and loaded"
+    success "  $_label -> rendered and loaded"
 done
 
 # =============================================================================

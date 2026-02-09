@@ -9,21 +9,21 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/sh</string>
-        <string>/Users/mac/Developer/utilities/scripts/sites-watcher.sh</string>
+        <string>{{HOME}}/Developer/utilities/scripts/sites-watcher.sh</string>
     </array>
 
     <key>WatchPaths</key>
     <array>
-        <string>/Users/mac/Developer/sites</string>
+        <string>{{HOME}}/Developer/sites</string>
     </array>
 
     <key>StartInterval</key>
     <integer>30</integer>
 
     <key>StandardOutPath</key>
-    <string>/Users/mac/Library/Logs/com.mac9sb/sites-watcher.stdout.log</string>
+    <string>{{HOME}}/Library/Logs/com.mac9sb/sites-watcher.stdout.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/mac/Library/Logs/com.mac9sb/sites-watcher.stderr.log</string>
+    <string>{{HOME}}/Library/Logs/com.mac9sb/sites-watcher.stderr.log</string>
 </dict>
 </plist>

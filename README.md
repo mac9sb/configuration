@@ -15,7 +15,7 @@ Personal macOS development environment — manages sites, tooling, and infrastru
 │   ├── cloudflared/         # Tunnel + primary domain config
 │   ├── dotfiles/            # Symlinked to ~/.*
 │   ├── githooks/            # Installed to .git/hooks/ during setup
-│   ├── launchd/             # Launchd plists (symlinked into ~/Library/LaunchAgents)
+│   ├── launchd/             # Launchd plist templates (rendered into ~/Library/LaunchAgents)
 │   ├── newsyslog/           # Log rotation config
 │   └── scripts/             # Runtime scripts
 ├── sites/                   # Website submodules
@@ -145,7 +145,7 @@ git commit -m "Move to new-name.com"
 
 ## Cloudflare Tunnel
 
-The tunnel config at `utilities/cloudflared/config.yml` is version-controlled (no credentials). It contains:
+The tunnel config at `utilities/cloudflared/config.yml` is version-controlled (no credentials) and rendered to `~/.cloudflared/config.yml` during setup. It contains:
 
 - The **primary domain** as a parseable comment (`# primary-domain: maclong.dev`)
 - **Ingress rules** for the primary domain, wildcard subdomains, and any custom domains
@@ -156,7 +156,7 @@ See the comments in `utilities/cloudflared/config.yml` for full details.
 ### First-Time Setup
 
 ```sh
-sudo ./setup.sh    # symlinks config, installs agents
+sudo ./setup.sh    # renders config, installs agents
 cloudflared tunnel login
 cloudflared tunnel create maclong --credentials-file ~/.cloudflared/maclong.json
 cloudflared tunnel route dns maclong maclong.dev

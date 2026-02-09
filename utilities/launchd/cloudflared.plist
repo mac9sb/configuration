@@ -9,7 +9,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/sh</string>
-        <string>/Users/mac/Developer/utilities/scripts/cloudflared-launcher.sh</string>
+        <string>{{HOME}}/Developer/utilities/scripts/cloudflared-launcher.sh</string>
     </array>
 
     <key>RunAtLoad</key>
@@ -22,9 +22,9 @@
     <integer>10</integer>
 
     <key>StandardOutPath</key>
-    <string>/Users/mac/Library/Logs/com.mac9sb/cloudflared.stdout.log</string>
+    <string>{{HOME}}/Library/Logs/com.mac9sb/cloudflared.stdout.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/mac/Library/Logs/com.mac9sb/cloudflared.stderr.log</string>
+    <string>{{HOME}}/Library/Logs/com.mac9sb/cloudflared.stderr.log</string>
 </dict>
 </plist>

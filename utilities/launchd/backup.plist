@@ -9,7 +9,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/sh</string>
-        <string>/Users/mac/Developer/utilities/scripts/backup.sh</string>
+        <string>{{HOME}}/Developer/utilities/scripts/backup.sh</string>
     </array>
 
     <key>StartCalendarInterval</key>
@@ -21,9 +21,9 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/mac/Library/Logs/com.mac9sb/backup.stdout.log</string>
+    <string>{{HOME}}/Library/Logs/com.mac9sb/backup.stdout.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/mac/Library/Logs/com.mac9sb/backup.stderr.log</string>
+    <string>{{HOME}}/Library/Logs/com.mac9sb/backup.stderr.log</string>
 </dict>
 </plist>

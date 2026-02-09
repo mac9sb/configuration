@@ -27,6 +27,31 @@ DB_PATH="${DB_PATH:-$DB_DIR/state.db}"
 
 # ── Low-level helpers ────────────────────────────────────────────────────────
 
+db_invalid() {
+    printf 'db.sh: invalid %s: %s\n' "$1" "$2" >&2
+}
+
+db_validate_name() {
+    case "$1" in
+        *[!A-Za-z0-9._-]*|'') return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+db_validate_key() {
+    case "$1" in
+        *[!A-Za-z0-9._-]*|'') return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+db_validate_site_type() {
+    case "$1" in
+        static|server) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Execute a write statement (INSERT, UPDATE, DELETE, CREATE, etc.)
 # Usage: db_exec "SQL statement" [args...]
 db_exec() {
@@ -92,6 +117,14 @@ SQL
 db_set_site() {
     _name="$1"
     _type="$2"
+    if ! db_validate_name "$_name"; then
+        db_invalid "site name" "$_name"
+        return 1
+    fi
+    if ! db_validate_site_type "$_type"; then
+        db_invalid "site type" "$_type"
+        return 1
+    fi
 
     if [ "$_type" = "server" ]; then
         # Assign a port if one doesn't exist yet
@@ -115,6 +148,10 @@ db_set_site() {
 # Remove a site record (cascades to servers table).
 # Usage: db_remove_site "repo-name"
 db_remove_site() {
+    if ! db_validate_name "$1"; then
+        db_invalid "site name" "$1"
+        return 1
+    fi
     db_exec "DELETE FROM sites WHERE name = '$1';"
 }
 
@@ -131,10 +168,15 @@ db_prune_sites() {
     # Build an IN clause: ('site1','site2','site3')
     _in=""
     for _s in $_keep_list; do
+        if ! db_validate_name "$_s"; then
+            db_invalid "site name" "$_s"
+            continue
+        fi
         [ -n "$_in" ] && _in="${_in},"
         _in="${_in}'${_s}'"
     done
 
+    [ -z "$_in" ] && return 0
     db_exec "DELETE FROM sites WHERE name NOT IN (${_in});"
 }
 
@@ -149,12 +191,20 @@ db_get_sites_state() {
 # Get a site's type.
 # Usage: _type="$(db_get_site_type "repo-name")"
 db_get_site_type() {
+    if ! db_validate_name "$1"; then
+        db_invalid "site name" "$1"
+        return 1
+    fi
     db_query "SELECT type FROM sites WHERE name = '$1';"
 }
 
 # List all sites of a given type (one name per line).
 # Usage: db_list_sites_by_type "server"
 db_list_sites_by_type() {
+    if ! db_validate_site_type "$1"; then
+        db_invalid "site type" "$1"
+        return 1
+    fi
     db_query "SELECT name FROM sites WHERE type = '$1' ORDER BY name;"
 }
 
@@ -168,6 +218,10 @@ SERVER_PORT_START="${SERVER_PORT_START:-8000}"
 # Usage: _port="$(db_get_port "repo-name")"
 db_get_port() {
     _name="$1"
+    if ! db_validate_name "$_name"; then
+        db_invalid "site name" "$_name"
+        return 1
+    fi
 
     # Check for existing assignment
     _existing="$(db_query "SELECT port FROM sites WHERE name = '$_name' AND port IS NOT NULL;")"
@@ -194,6 +248,10 @@ db_get_port() {
 # Returns empty string if no port is assigned.
 # Usage: _port="$(db_get_port_if_exists "repo-name")"
 db_get_port_if_exists() {
+    if ! db_validate_name "$1"; then
+        db_invalid "site name" "$1"
+        return 1
+    fi
     db_query "SELECT port FROM sites WHERE name = '$1' AND port IS NOT NULL;"
 }
 
@@ -206,6 +264,10 @@ db_save_server() {
     _pid="$2"
     _mtime="$3"
     _now="$(date +%s)"
+    if ! db_validate_name "$_name"; then
+        db_invalid "server name" "$_name"
+        return 1
+    fi
 
     db_exec "INSERT INTO servers (name, pid, binary_mtime, started_at)
              VALUES ('$_name', $_pid, $_mtime, $_now)
@@ -218,24 +280,40 @@ db_save_server() {
 # Remove a server process record.
 # Usage: db_remove_server "repo-name"
 db_remove_server() {
+    if ! db_validate_name "$1"; then
+        db_invalid "server name" "$1"
+        return 1
+    fi
     db_exec "DELETE FROM servers WHERE name = '$1';"
 }
 
 # Get the PID of a running server.
 # Usage: _pid="$(db_get_server_pid "repo-name")"
 db_get_server_pid() {
+    if ! db_validate_name "$1"; then
+        db_invalid "server name" "$1"
+        return 1
+    fi
     db_query "SELECT pid FROM servers WHERE name = '$1';"
 }
 
 # Get the stored binary mtime for a server.
 # Usage: _mtime="$(db_get_server_mtime "repo-name")"
 db_get_server_mtime() {
+    if ! db_validate_name "$1"; then
+        db_invalid "server name" "$1"
+        return 1
+    fi
     db_query "SELECT binary_mtime FROM servers WHERE name = '$1';"
 }
 
 # Get the start timestamp for a server.
 # Usage: _started="$(db_get_server_started "repo-name")"
 db_get_server_started() {
+    if ! db_validate_name "$1"; then
+        db_invalid "server name" "$1"
+        return 1
+    fi
     db_query "SELECT started_at FROM servers WHERE name = '$1';"
 }
 
@@ -248,6 +326,10 @@ db_list_tracked_servers() {
 # Get full server info: name|pid|binary_mtime|started_at
 # Usage: db_get_server_info "repo-name"
 db_get_server_info() {
+    if ! db_validate_name "$1"; then
+        db_invalid "server name" "$1"
+        return 1
+    fi
     db_query_separated "SELECT name, pid, binary_mtime, started_at FROM servers WHERE name = '$1';"
 }
 
@@ -256,6 +338,10 @@ db_get_server_info() {
 # Set a config value.
 # Usage: db_set_config "manager_pid" "12345"
 db_set_config() {
+    if ! db_validate_key "$1"; then
+        db_invalid "config key" "$1"
+        return 1
+    fi
     db_exec "INSERT INTO config (key, value)
              VALUES ('$1', '$2')
              ON CONFLICT(key) DO UPDATE SET value = '$2';"
@@ -264,12 +350,20 @@ db_set_config() {
 # Get a config value (empty string if not set).
 # Usage: _val="$(db_get_config "manager_pid")"
 db_get_config() {
+    if ! db_validate_key "$1"; then
+        db_invalid "config key" "$1"
+        return 1
+    fi
     db_query "SELECT value FROM config WHERE key = '$1';"
 }
 
 # Remove a config key.
 # Usage: db_remove_config "manager_pid"
 db_remove_config() {
+    if ! db_validate_key "$1"; then
+        db_invalid "config key" "$1"
+        return 1
+    fi
     db_exec "DELETE FROM config WHERE key = '$1';"
 }
 
@@ -278,6 +372,10 @@ db_remove_config() {
 # Queue a restart request for a server.
 # Usage: db_queue_restart "repo-name"
 db_queue_restart() {
+    if ! db_validate_name "$1"; then
+        db_invalid "server name" "$1"
+        return 1
+    fi
     db_exec "INSERT INTO restart_queue (name, requested_at)
              VALUES ('$1', datetime('now'))
              ON CONFLICT(name) DO UPDATE SET requested_at = datetime('now');"
@@ -322,6 +420,10 @@ db_import_port_assignments() {
     while IFS='=' read -r _repo _port; do
         [ -z "$_repo" ] && continue
         [ -z "$_port" ] && continue
+        if ! db_validate_name "$_repo"; then
+            db_invalid "site name" "$_repo"
+            continue
+        fi
         db_exec "INSERT INTO sites (name, type, port, updated_at)
                  VALUES ('$_repo', 'server', $_port, datetime('now'))
                  ON CONFLICT(name) DO UPDATE SET
@@ -390,6 +492,14 @@ db_import_sites_state() {
     while IFS=: read -r _repo _type; do
         [ -z "$_repo" ] && continue
         [ -z "$_type" ] && continue
+        if ! db_validate_name "$_repo"; then
+            db_invalid "site name" "$_repo"
+            continue
+        fi
+        if ! db_validate_site_type "$_type"; then
+            db_invalid "site type" "$_type"
+            continue
+        fi
         db_exec "INSERT INTO sites (name, type, updated_at)
                  VALUES ('$_repo', '$_type', datetime('now'))
                  ON CONFLICT(name) DO UPDATE SET

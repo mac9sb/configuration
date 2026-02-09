@@ -78,6 +78,13 @@ db_set_config "manager_pid" "$$"
 
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "$MANAGER_LOG"; }
 
+is_safe_identifier() {
+    case "$1" in
+        *[!A-Za-z0-9._-]*|'') return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
 # ── Signal flags ─────────────────────────────────────────────────────────────
 
 reload_flag=0
@@ -331,6 +338,10 @@ reconcile() {
     for _dir in "$SITES_DIR"/*/; do
         [ ! -d "$_dir" ] && continue
         _name="$(basename "$_dir")"
+        if ! is_safe_identifier "$_name"; then
+            log "WARN: Invalid site name '${_name}' — skipping"
+            continue
+        fi
 
         # Skip static sites
         [ -d "$_dir/.output" ] && continue
@@ -410,6 +421,9 @@ run_health_checks() {
     for _dir in "$SITES_DIR"/*/; do
         [ ! -d "$_dir" ] && continue
         _name="$(basename "$_dir")"
+        if ! is_safe_identifier "$_name"; then
+            continue
+        fi
 
         [ -d "$_dir/.output" ] && continue
 

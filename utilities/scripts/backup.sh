@@ -185,7 +185,6 @@ fi
 for _site_dir in "$SITES_DIR"/*/; do
     [ ! -d "$_site_dir" ] && continue
     _site_name="$(basename "$_site_dir")"
-    _found_dbs=false
 
     _project_dir="$STAGING/$_site_name"
     mkdir -p "$_project_dir"
@@ -213,12 +212,10 @@ for _site_dir in "$SITES_DIR"/*/; do
         # Use sqlite3 .backup for a consistent WAL-safe snapshot
         if sqlite3 "$_db_file" ".backup '$_backup_dest'" 2>/dev/null; then
             log "  Found DB: $_site_name/$_rel_path"
-            _found_dbs=true
         else
             # Fallback to file copy for non-SQLite files matching the extension
             cp "$_db_file" "$_backup_dest" 2>/dev/null || true
             log "  Copied (non-WAL): $_site_name/$_rel_path"
-            _found_dbs=true
         fi
     done
 
@@ -299,12 +296,15 @@ fi
 # =============================================================================
 
 _cleaned=0
-find "$BACKUP_DIR" -name 'com.mac9sb.server-backup-*.tar.gz' -type f -mtime +"$RETENTION_DAYS" 2>/dev/null | \
-    while IFS= read -r _old; do
-        rm -f "$_old"
-        log "  Cleaned up old backup: $(basename "$_old")"
-        _cleaned=$((_cleaned + 1))
-    done
+_cleanup_list="$(mktemp)"
+find "$BACKUP_DIR" -name 'com.mac9sb.server-backup-*.tar.gz' -type f -mtime +"$RETENTION_DAYS" 2>/dev/null > "$_cleanup_list"
+while IFS= read -r _old; do
+    [ -z "$_old" ] && continue
+    rm -f "$_old"
+    log "  Cleaned up old backup: $(basename "$_old")"
+    _cleaned=$((_cleaned + 1))
+done < "$_cleanup_list"
+rm -f "$_cleanup_list"
 
 if [ "$_cleaned" -gt 0 ]; then
     log "Cleaned up $_cleaned backup(s) older than $RETENTION_DAYS days"

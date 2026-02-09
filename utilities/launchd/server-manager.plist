@@ -9,7 +9,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/sh</string>
-        <string>/Users/mac/Developer/utilities/scripts/server-manager.sh</string>
+        <string>{{HOME}}/Developer/utilities/scripts/server-manager.sh</string>
     </array>
 
     <key>RunAtLoad</key>
@@ -19,9 +19,9 @@
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/Users/mac/Library/Logs/com.mac9sb/server-manager.stdout.log</string>
+    <string>{{HOME}}/Library/Logs/com.mac9sb/server-manager.stdout.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/mac/Library/Logs/com.mac9sb/server-manager.stderr.log</string>
+    <string>{{HOME}}/Library/Logs/com.mac9sb/server-manager.stderr.log</string>
 </dict>
 </plist>

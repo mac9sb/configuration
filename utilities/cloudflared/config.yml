@@ -4,7 +4,7 @@
 #  This file is version-controlled (no secrets). Credentials live off-repo
 #  at ~/.cloudflared/maclong.json.
 #
-#  Symlinked into ~/.cloudflared/config.yml by setup.sh so that cloudflared
+#  Rendered into ~/.cloudflared/config.yml by setup.sh so that cloudflared
 #  finds it at its default config location.
 #
 #  The primary-domain comment below is parsed by setup.sh and sites-watcher.sh
@@ -13,10 +13,10 @@
 # =============================================================================
 
 tunnel: maclong
-credentials-file: /Users/mac/.cloudflared/maclong.json
+credentials-file: {{HOME}}/.cloudflared/maclong.json
 
 ingress:
-  # Primary domain and wildcard subdomains → Apache handles VirtualHost routing
+  # Primary domain and wildcard subdomains -> Apache handles VirtualHost routing
   - hostname: maclong.dev
     service: http://localhost:80
   - hostname: "*.maclong.dev"

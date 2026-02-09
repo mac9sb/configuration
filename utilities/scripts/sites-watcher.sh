@@ -65,6 +65,17 @@ log() { printf "[%s] %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "$WATCHER_LOG"
 #  Template Rendering
 # =============================================================================
 
+escape_sed_replacement() {
+    printf '%s' "$1" | sed -e 's/[\\/&|]/\\&/g'
+}
+
+is_safe_identifier() {
+    case "$1" in
+        *[!A-Za-z0-9._-]*|'') return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
 render_template() {
     _tmpl_file="$1"
     shift
@@ -78,6 +89,7 @@ render_template() {
     for _pair in "$@"; do
         _key="${_pair%%=*}"
         _val="${_pair#*=}"
+        _val="$(escape_sed_replacement "$_val")"
         _rendered="$(printf '%s' "$_rendered" | sed "s|{{${_key}}}|${_val}|g")"
     done
     printf '%s\n' "$_rendered"
@@ -92,6 +104,11 @@ render_template() {
 PRIMARY_DOMAIN=""
 if [ -f "$CLOUDFLARED_CONFIG" ]; then
     PRIMARY_DOMAIN="$(sed -n 's/^# *primary-domain: *//p' "$CLOUDFLARED_CONFIG" | head -1 | tr -d '[:space:]')"
+fi
+
+if [ -n "$PRIMARY_DOMAIN" ] && ! is_safe_identifier "$PRIMARY_DOMAIN"; then
+    log "WARN: Invalid primary-domain in $CLOUDFLARED_CONFIG — subdomain routing disabled"
+    PRIMARY_DOMAIN=""
 fi
 
 if [ -z "$PRIMARY_DOMAIN" ]; then
@@ -190,6 +207,13 @@ sync_cloudflared_ingress() {
     fi
 }
 
+render_cloudflared_config() {
+    _dest="$HOME/.cloudflared/config.yml"
+    [ ! -f "$CLOUDFLARED_CONFIG" ] && return 0
+    mkdir -p "$HOME/.cloudflared" 2>/dev/null || true
+    render_template "$CLOUDFLARED_CONFIG" "HOME=$HOME" > "$_dest"
+}
+
 # =============================================================================
 #  Ensure directories exist & initialise database
 # =============================================================================
@@ -209,6 +233,10 @@ _discovered_names=""
 for dir in "$SITES_DIR"/*/; do
     [ ! -d "$dir" ] && continue
     repo="$(basename "$dir")"
+    if ! is_safe_identifier "$repo"; then
+        log "WARN: Invalid site name '$repo' — skipping"
+        continue
+    fi
 
     if [ -d "$dir/.output" ]; then
         current_state="${current_state}${repo}:static
@@ -230,6 +258,7 @@ current_state="$(printf '%s' "$current_state" | sort)"
 #  2. Sync cloudflared ingress entries from filesystem
 # =============================================================================
 sync_cloudflared_ingress
+render_cloudflared_config
 
 # =============================================================================
 #  3. Compare with previous state — exit early if nothing changed

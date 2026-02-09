@@ -13,6 +13,12 @@
 
 SERVER_NAME="$1"
 [ -z "$SERVER_NAME" ] && { echo "Usage: restart-server.sh <server-name>" >&2; exit 1; }
+case "$SERVER_NAME" in
+    *[!A-Za-z0-9._-]*|'')
+        echo "Invalid server name: $SERVER_NAME" >&2
+        exit 1
+        ;;
+esac
 
 # Source the shared SQLite helpers
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
