@@ -244,7 +244,11 @@ fi
 info "Installing cloudflared"
 if ! command_exists cloudflared; then
     CF_LATEST=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/cloudflare/cloudflared/releases/latest | sed 's|.*/||')
-    CF_PKG_URL="https://github.com/cloudflare/cloudflared/releases/download/${CF_LATEST}/cloudflared-arm64.pkg"
+    CF_ARCH="arm64"
+    if [ "$(uname -m)" = "x86_64" ]; then
+        CF_ARCH="amd64"
+    fi
+    CF_PKG_URL="https://github.com/cloudflare/cloudflared/releases/download/${CF_LATEST}/cloudflared-${CF_ARCH}.pkg"
     CF_SHA_URL="${CF_PKG_URL}.sha256"
     info "Downloading cloudflared ${CF_LATEST}..."
     TMPDIR_CF="$(mktemp -d)"
