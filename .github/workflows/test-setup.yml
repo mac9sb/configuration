@@ -331,6 +331,29 @@ jobs:
           done
           exit $FAIL
 
+      # ── Verify backup script (local archive) ─────────────────────────────
+      - name: Verify backup script creates archive
+        run: |
+          export HOME="$(dirname "$GITHUB_WORKSPACE")"
+          DATE="$(date +%Y%m%d)"
+          BACKUP_DIR="$HOME/Library/Application Support/com.mac9sb/backups"
+          MEGA_TAR="$BACKUP_DIR/com.mac9sb.server-backup-${DATE}.tar.gz"
+
+          "$HOME/Developer/utilities/scripts/backup.sh"
+
+          if [ ! -f "$MEGA_TAR" ]; then
+            echo "FAIL: backup tarball not found at $MEGA_TAR"
+            exit 1
+          fi
+          echo "OK: backup tarball created"
+
+          if tar -tzf "$MEGA_TAR" | grep -q "com.mac9sb.infrastructure-db-bak-${DATE}.tar.gz"; then
+            echo "OK: infrastructure backup tar present in mega-tar"
+          else
+            echo "FAIL: infrastructure backup tar missing from mega-tar"
+            exit 1
+          fi
+
       # ── Verify sudoers for apachectl ─────────────────────────────────────
       - name: Verify passwordless sudo for apachectl
         run: |
