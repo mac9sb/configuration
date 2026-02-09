@@ -245,17 +245,28 @@ info "Installing cloudflared"
 if ! command_exists cloudflared; then
     CF_LATEST=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/cloudflare/cloudflared/releases/latest | sed 's|.*/||')
     CF_PKG_URL="https://github.com/cloudflare/cloudflared/releases/download/${CF_LATEST}/cloudflared-arm64.pkg"
+    CF_SHA_URL="${CF_PKG_URL}.sha256"
     info "Downloading cloudflared ${CF_LATEST}..."
     TMPDIR_CF="$(mktemp -d)"
     if curl -sL --fail --max-time 60 "$CF_PKG_URL" -o "$TMPDIR_CF/cloudflared.pkg"; then
-        if sudo installer -pkg "$TMPDIR_CF/cloudflared.pkg" -target / >/dev/null 2>&1; then
-            if command_exists cloudflared; then
-                success "cloudflared installed: $(cloudflared --version 2>&1 | head -1)"
+        if curl -sL --fail --max-time 60 "$CF_SHA_URL" -o "$TMPDIR_CF/cloudflared.pkg.sha256"; then
+            _expected="$(awk '{print $1}' "$TMPDIR_CF/cloudflared.pkg.sha256" | head -1)"
+            _actual="$(shasum -a 256 "$TMPDIR_CF/cloudflared.pkg" | awk '{print $1}')"
+            if [ -n "$_expected" ] && [ "$_expected" = "$_actual" ]; then
+                if sudo installer -pkg "$TMPDIR_CF/cloudflared.pkg" -target / >/dev/null 2>&1; then
+                    if command_exists cloudflared; then
+                        success "cloudflared installed: $(cloudflared --version 2>&1 | head -1)"
+                    else
+                        warn "cloudflared pkg installed but binary not found on PATH — check /usr/local/bin"
+                    fi
+                else
+                    warn "cloudflared pkg installer failed — install manually later"
+                fi
             else
-                warn "cloudflared pkg installed but binary not found on PATH — check /usr/local/bin"
+                warn "cloudflared checksum verification failed — install manually"
             fi
         else
-            warn "cloudflared pkg installer failed — install manually later"
+            warn "cloudflared checksum not available — install manually"
         fi
     else
         warn "Failed to download cloudflared — install manually later"
@@ -511,7 +522,7 @@ sudo chown "${SUDO_USER:-$(logname)}:staff" "$CUSTOM_CONF"
 # Passwordless sudo for apachectl (used by sites-watcher on every scan)
 _sudoers="/etc/sudoers.d/mac9sb"
 if [ ! -f "$_sudoers" ]; then
-    printf '%s ALL=(root) NOPASSWD: /usr/sbin/apachectl\n' "${SUDO_USER:-$(logname)}" \
+    printf '%s ALL=(root) NOPASSWD: /usr/sbin/apachectl configtest, /usr/sbin/apachectl restart\n' "${SUDO_USER:-$(logname)}" \
         | sudo tee "$_sudoers" >/dev/null
     sudo chmod 0440 "$_sudoers"
     success "  Installed passwordless sudo for apachectl ($_sudoers)"
@@ -812,7 +823,8 @@ if [ -f "$HOME/.cloudflared/maclong.json" ]; then
     if command_exists cloudflared; then
         # Extract primary domain from config
         _primary_domain="$(grep "^# primary-domain:" "$_tunnel_config" 2>/dev/null | awk '{print $3}')"
-        if [ -n "$_primary_domain" ]; then
+        CLOUDFLARED_AUTO_DNS="${CLOUDFLARED_AUTO_DNS:-1}"
+        if [ -n "$_primary_domain" ] && [ "$CLOUDFLARED_AUTO_DNS" != "0" ]; then
             # Add root domain route
             if cloudflared tunnel route dns -f maclong "${_primary_domain}" 2>/dev/null; then
                 success "  Added DNS route: ${_primary_domain}"
@@ -841,6 +853,8 @@ if [ -f "$HOME/.cloudflared/maclong.json" ]; then
                     fi
                 fi
             done
+        elif [ "$CLOUDFLARED_AUTO_DNS" = "0" ]; then
+            warn "  Skipping DNS route updates (CLOUDFLARED_AUTO_DNS=0)"
         fi
     fi
 else

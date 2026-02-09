@@ -4,7 +4,7 @@
     DocumentRoot "{{OUTPUT_DIR}}"
 
     <Directory "{{OUTPUT_DIR}}">
-        Options Indexes FollowSymLinks MultiViews
+        Options FollowSymLinks MultiViews
         AllowOverride All
         Require all granted
 

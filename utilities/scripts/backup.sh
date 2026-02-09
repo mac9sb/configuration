@@ -155,10 +155,10 @@ r2_upload() {
 
 # Staging directory for this run
 STAGING="$(mktemp -d)"
-trap 'rm -rf "$STAGING"' EXIT
 
 # Track per-project tarballs for the mega-tar
-PROJECT_TARBALLS=""
+TAR_LIST="$(mktemp)"
+trap 'rm -rf "$STAGING" "$TAR_LIST"' EXIT
 BACKUP_COUNT=0
 
 # --- Infrastructure state database ---
@@ -173,7 +173,7 @@ if [ -f "$_state_db" ]; then
     if [ $? -eq 0 ]; then
         _tarname="com.mac9sb.${_project}-db-bak-${DATE}.tar.gz"
         (cd "$STAGING" && tar -czf "$_tarname" "$_project/")
-        PROJECT_TARBALLS="${PROJECT_TARBALLS} ${_tarname}"
+        printf '%s\n' "$_tarname" >> "$TAR_LIST"
         BACKUP_COUNT=$((BACKUP_COUNT + 1))
         log "  Backed up: $_state_db → $_tarname"
     else
@@ -224,7 +224,7 @@ for _site_dir in "$SITES_DIR"/*/; do
     if [ -n "$(find "$_project_dir" -type f 2>/dev/null)" ]; then
         _tarname="com.mac9sb.${_site_name}-db-bak-${DATE}.tar.gz"
         (cd "$STAGING" && tar -czf "$_tarname" "$_site_name/")
-        PROJECT_TARBALLS="${PROJECT_TARBALLS} ${_tarname}"
+        printf '%s\n' "$_tarname" >> "$TAR_LIST"
         BACKUP_COUNT=$((BACKUP_COUNT + 1))
         log "  Created: $_tarname"
     fi
@@ -244,7 +244,7 @@ MEGA_TAR="com.mac9sb.server-backup-${DATE}.tar.gz"
 MEGA_TAR_PATH="$BACKUP_DIR/$MEGA_TAR"
 
 # Collect all per-project tarballs into the mega-tar
-(cd "$STAGING" && tar -czf "$MEGA_TAR_PATH" $PROJECT_TARBALLS)
+(cd "$STAGING" && tar -czf "$MEGA_TAR_PATH" -T "$TAR_LIST")
 log "Created mega-tarball: $MEGA_TAR ($BACKUP_COUNT project(s))"
 
 _size="$(stat -f '%z' "$MEGA_TAR_PATH" 2>/dev/null || echo "unknown")"
@@ -256,6 +256,20 @@ log "  Size: ${_size} bytes"
 
 _upload_success=false
 
+# Read a single key from a .env-style file without executing it.
+read_env_var() {
+    _key="$1"
+    _line="$(grep -E "^[[:space:]]*(export[[:space:]]+)?${_key}[[:space:]]*=" "$R2_CREDS" | head -1)"
+    [ -z "$_line" ] && return 0
+    _val="${_line#*=}"
+    _val="${_val%$'\r'}"
+    case "$_val" in
+        \"*\") _val="${_val#\"}"; _val="${_val%\"}" ;;
+        \'*\') _val="${_val#\'}"; _val="${_val%\'}" ;;
+    esac
+    printf '%s' "$_val"
+}
+
 if [ ! -f "$R2_CREDS" ]; then
     log "WARN: R2 credentials not found at $R2_CREDS — skipping upload"
     log "  Create $R2_CREDS with:"
@@ -264,8 +278,11 @@ if [ ! -f "$R2_CREDS" ]; then
     log "    R2_SECRET_ACCESS_KEY=<secret-key>"
     log "    R2_BUCKET=<bucket-name>"
 else
-    # Source credentials
-    . "$R2_CREDS"
+    # Read credentials without sourcing the file
+    : "${R2_ACCOUNT_ID:=$(read_env_var R2_ACCOUNT_ID)}"
+    : "${R2_ACCESS_KEY_ID:=$(read_env_var R2_ACCESS_KEY_ID)}"
+    : "${R2_SECRET_ACCESS_KEY:=$(read_env_var R2_SECRET_ACCESS_KEY)}"
+    : "${R2_BUCKET:=$(read_env_var R2_BUCKET)}"
 
     # Validate required fields
     _missing=""
