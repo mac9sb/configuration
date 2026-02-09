@@ -201,7 +201,7 @@ start_server() {
         exec env \
             PORT="$_port" \
             PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
-            "$_run_binary"
+            "$_run_binary" --port "$_port"
     ) >> "$LOG_DIR/${_name}.log" 2>> "$LOG_DIR/${_name}.error.log" &
 
     _pid=$!
