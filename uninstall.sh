@@ -13,10 +13,10 @@ set -e
 #    - Removes Cloudflare tunnel directory (~/.cloudflared)
 #    - Removes log rotation config (newsyslog)
 #    - Removes git hooks
-#    - Optionally removes installed CLI tools (cloudflared)
+#    - Optionally removes installed CLI tools (cloudflared, gh, opencode)
 #
 #  Usage: sudo ./uninstall.sh [--all]
-#    --all    Also remove cloudflared and Xcode CLI tools
+#    --all    Also remove Homebrew CLI tools and Xcode CLI tools
 # =============================================================================
 
 GITHUB_USER="mac9sb"
@@ -86,7 +86,7 @@ cat <<EOF
     - Remove git hooks (.git/hooks/pre-push)
     - Remove Apache site log directory ($APACHE_LOG_DIR)
 EOF
-[ "$REMOVE_TOOLS" = true ] && printf '    - Remove cloudflared from /usr/local/bin\n'
+[ "$REMOVE_TOOLS" = true ] && printf '    - Remove Homebrew CLI tools (cloudflared, gh, opencode)\n'
 
 cat <<'EOF'
 
@@ -380,12 +380,17 @@ fi
 info "Step 8/8: CLI tools"
 
 if [ "$REMOVE_TOOLS" = true ]; then
-    if [ -f /usr/local/bin/cloudflared ]; then
-        sudo rm -f /usr/local/bin/cloudflared
-        success "  Removed cloudflared"
+    if command -v brew >/dev/null 2>&1; then
+        for _tool in cloudflared gh opencode; do
+            if brew list --formula "$_tool" >/dev/null 2>&1; then
+                brew uninstall "$_tool"
+                success "  Removed $_tool"
+            fi
+        done
+        success "CLI tools removed"
+    else
+        warn "  Homebrew not found; skipping CLI tool removal"
     fi
-
-    success "CLI tools removed"
 else
     info "  Skipping CLI tool removal (use --all to include)"
 fi
@@ -413,7 +418,7 @@ cat <<EOF
     - Git hooks (pre-push)
     - Rollback binaries (*.run, *.bak)
 EOF
-[ "$REMOVE_TOOLS" = true ] && printf '    - CLI tools (cloudflared)\n'
+[ "$REMOVE_TOOLS" = true ] && printf '    - CLI tools (cloudflared, gh, opencode)\n'
 
 printf '\n  \033[1mPreserved:\033[0m\n'
 cat <<EOF
@@ -424,7 +429,7 @@ cat <<EOF
     - R2 credentials (.env.local)
     - Git repository and submodule configuration
 
-  To re-setup: sudo ./setup.sh
+  To re-setup: ./setup.sh
   To fully remove: rm -rf $DEV_DIR
 
 EOF

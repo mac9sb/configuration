@@ -28,8 +28,12 @@ Personal macOS development environment — manages sites, tooling, and infrastru
 git clone --recursive https://github.com/mac9sb/server.git ~/Developer
 cd ~/Developer
 cp .env.example .env.local   # fill in R2 credentials
-sudo ./setup.sh
+./setup.sh                   # prompts for sudo during Phase A
 ```
+
+> [!NOTE]
+> Setup uses the repo `Brewfile` (Homebrew + mas) to install tools, casks, and App Store apps.
+> Sign into the App Store first if you want MAS installs to succeed.
 
 ## Architecture
 

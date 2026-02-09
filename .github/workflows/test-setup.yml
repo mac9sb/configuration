@@ -56,10 +56,10 @@ jobs:
           which gh
           gh --version
 
-      - name: Verify copilot binary
+      - name: Verify opencode binary
         run: |
-          which copilot
-          copilot --version
+          which opencode
+          opencode --version
 
       - name: Verify swift
         run: |

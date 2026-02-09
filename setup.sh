@@ -10,7 +10,7 @@ set -e
 #    - Dotfiles (symlinked from utilities/dotfiles)
 #    - SSH key generation
 #    - Xcode CLI tools & Swift
-#    - CLI tooling (cloudflared, gh, copilot)
+#    - CLI tooling (cloudflared, gh, opencode)
 #    - Git submodule initialization & hook installation
 #    - Building Swift projects (with rollback preservation)
 #    - Apache with mod_proxy/mod_rewrite/mod_headers + per-site config
@@ -31,12 +31,51 @@ set -e
 GITHUB_USER="mac9sb"
 GIT_EMAIL="maclong9@icloud.com"
 
-DEV_DIR="$HOME/Developer"
+PHASE=""
+PLAN_MODE=0
+DRY_RUN=0
+RUN_USER_AFTER_ROOT="${RUN_USER_AFTER_ROOT:-0}"
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --phase)
+            PHASE="$2"
+            shift 2
+            ;;
+        --phase=*)
+            PHASE="${1#*=}"
+            shift
+            ;;
+        --plan)
+            PLAN_MODE=1
+            shift
+            ;;
+        --dry-run)
+            DRY_RUN=1
+            shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+REAL_USER="${SUDO_USER:-$(id -un)}"
+if [ "$REAL_USER" = "root" ]; then
+    REAL_USER="$(/usr/bin/logname 2>/dev/null || /usr/bin/stat -f%Su /dev/console 2>/dev/null || echo root)"
+fi
+REAL_HOME="$(eval echo "~${REAL_USER}")"
+REAL_GROUP="$(id -gn "${REAL_USER}" 2>/dev/null || echo staff)"
+
+PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH
+
+DEV_DIR="$REAL_HOME/Developer"
 SITES_DIR="$DEV_DIR/sites"
 TOOLING_DIR="$DEV_DIR/tooling"
 UTILITIES_DIR="$DEV_DIR/utilities"
-STATE_DIR="$HOME/Library/Application Support/com.mac9sb"
-LOG_DIR="$HOME/Library/Logs/com.mac9sb"
+STATE_DIR="$REAL_HOME/Library/Application Support/com.mac9sb"
+LOG_DIR="$REAL_HOME/Library/Logs/com.mac9sb"
 
 HTTPD_CONF="/etc/apache2/httpd.conf"
 CUSTOM_CONF="/etc/apache2/extra/custom.conf"
@@ -63,12 +102,6 @@ CLASSIFY_TIMEOUT=15
 
 UID_NUM="$(id -u)"
 
-# Initialise the state database early so db_* helpers are available
-mkdir -p "$STATE_DIR" "$LOG_DIR"
-chown -R "${SUDO_USER:-$(logname)}:staff" "$STATE_DIR" "$LOG_DIR"
-db_init
-chown -R "${SUDO_USER:-$(logname)}:staff" "$STATE_DIR"
-
 # =============================================================================
 #  Utility Functions
 # =============================================================================
@@ -79,6 +112,30 @@ warn()    { printf "\033[1;33m[WARN]\033[0m  %s\n" "$1"; }
 error()   { printf "\033[1;31m[ERROR]\033[0m %s\n" "$1"; exit 1; }
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
+
+task() {
+    _name="$1"
+    _check_fn="$2"
+    _apply_fn="$3"
+
+    info "$_name"
+    if "$_check_fn"; then
+        success "  Already configured"
+        return 0
+    fi
+
+    if [ "$PLAN_MODE" -eq 1 ] || [ "$DRY_RUN" -eq 1 ]; then
+        warn "  Pending (plan mode)"
+        return 0
+    fi
+
+    if "$_apply_fn"; then
+        success "  Applied"
+        return 0
+    fi
+
+    error "  Failed"
+}
 
 # Renders a template file by replacing {{KEY}} placeholders with values.
 # Usage: render_template <template_file> KEY=value KEY2=value2 ...
@@ -102,14 +159,14 @@ render_template() {
         error "Template not found: $_tmpl_file"
     fi
 
-    _rendered="$(cat "$_tmpl_file")"
+    _cmd="cat \"$_tmpl_file\""
     for _pair in "$@"; do
         _key="${_pair%%=*}"
         _val="${_pair#*=}"
         _val="$(escape_sed_replacement "$_val")"
-        _rendered="$(printf '%s' "$_rendered" | sed "s|{{${_key}}}|${_val}|g")"
+        _cmd="$_cmd | perl -pe 's/\\Q{{${_key}}}\\E/${_val}/g'"
     done
-    printf '%s\n' "$_rendered"
+    eval "$_cmd"
 }
 
 # Run a command with a timeout.
@@ -119,44 +176,223 @@ run_with_timeout() {
     _timeout="$1"
     shift
 
-    "$@" &
+    setsid "$@" &
     _cmd_pid=$!
 
     (
         sleep "$_timeout"
-        kill "$_cmd_pid" 2>/dev/null || true
+        kill -TERM "-$_cmd_pid" 2>/dev/null
     ) &
     _timer_pid=$!
 
     if wait "$_cmd_pid" 2>/dev/null; then
-        kill "$_timer_pid" 2>/dev/null || true
-        wait "$_timer_pid" 2>/dev/null || true
+        kill "$_timer_pid" 2>/dev/null
+        wait "$_timer_pid" 2>/dev/null
         return 0
-    else
-        kill "$_timer_pid" 2>/dev/null || true
-        wait "$_timer_pid" 2>/dev/null || true
-        return 1
+    fi
+
+    kill "$_timer_pid" 2>/dev/null
+    wait "$_timer_pid" 2>/dev/null
+    return 1
+}
+
+check_touch_id() {
+    [ -f /etc/pam.d/sudo_local ] && grep -q "pam_tid.so" /etc/pam.d/sudo_local 2>/dev/null
+}
+
+apply_touch_id() {
+    if [ ! -f /etc/pam.d/sudo_local ]; then
+        cp /etc/pam.d/sudo_local.template /etc/pam.d/sudo_local
+    fi
+    sed -i '' 's/^#auth/auth/' /etc/pam.d/sudo_local
+}
+
+check_apache_system() {
+    for _mod in mod_proxy.so mod_proxy_http.so mod_rewrite.so mod_proxy_wstunnel.so mod_headers.so; do
+        grep -q "^LoadModule.*${_mod}" "$HTTPD_CONF" 2>/dev/null || return 1
+    done
+
+    grep -q "^ServerName localhost" "$HTTPD_CONF" 2>/dev/null || return 1
+    grep -q "extra/custom.conf" "$HTTPD_CONF" 2>/dev/null || return 1
+    [ -f "$CUSTOM_CONF" ] || return 1
+    [ -d "$APACHE_LOG_DIR" ] || return 1
+    [ -f "/etc/sudoers.d/mac9sb" ] || return 1
+    return 0
+}
+
+apply_apache_system() {
+    enable_module() {
+        _mod="$1"
+        if grep -q "^#.*${_mod}" "$HTTPD_CONF"; then
+            sed -i '' "s|^#\\(.*$_mod\\)|\\1|" "$HTTPD_CONF"
+        fi
+    }
+
+    cp "$HTTPD_CONF" "${HTTPD_CONF}.bak.$(date +%Y%m%d%H%M%S)"
+    for _mod in mod_proxy.so mod_proxy_http.so mod_rewrite.so mod_proxy_wstunnel.so mod_headers.so; do
+        enable_module "$_mod"
+    done
+
+    if grep -q "^#ServerName" "$HTTPD_CONF"; then
+        sed -i '' 's|^#ServerName.*|ServerName localhost|' "$HTTPD_CONF"
+    fi
+
+    if ! grep -q "extra/custom.conf" "$HTTPD_CONF"; then
+        printf "\n# Developer custom site configuration\nInclude /private/etc/apache2/extra/custom.conf\n" \
+            >> "$HTTPD_CONF"
+    fi
+
+    mkdir -p "$APACHE_LOG_DIR"
+    chown "${REAL_USER}:${REAL_GROUP}" "$APACHE_LOG_DIR"
+
+    if [ ! -f "$CUSTOM_CONF" ]; then
+        touch "$CUSTOM_CONF"
+    fi
+    chown "${REAL_USER}:${REAL_GROUP}" "$CUSTOM_CONF"
+
+    _sudoers="/etc/sudoers.d/mac9sb"
+    if [ ! -f "$_sudoers" ]; then
+        printf '%s ALL=(root) NOPASSWD: /usr/sbin/apachectl configtest, /usr/sbin/apachectl restart\n' "${REAL_USER}" \
+            > "$_sudoers"
+        chmod 0440 "$_sudoers"
     fi
 }
 
-# =============================================================================
-#  Step 1 — Touch ID for sudo
-# =============================================================================
+check_newsyslog() {
+    [ -f "/etc/newsyslog.d/com.mac9sb.conf" ]
+}
 
-info "Touch ID for sudo"
-if [ ! -f /etc/pam.d/sudo_local ] || ! grep -q "pam_tid.so" /etc/pam.d/sudo_local 2>/dev/null; then
-    sudo cp /etc/pam.d/sudo_local.template /etc/pam.d/sudo_local
-    sudo sed -i '' 's/^#auth/auth/' /etc/pam.d/sudo_local
-    success "Touch ID enabled for sudo"
-else
-    success "Touch ID already configured"
-fi
+apply_newsyslog() {
+    _newsyslog_src="$NEWSYSLOG_DIR/com.mac9sb.conf"
+    _newsyslog_dest="/etc/newsyslog.d/com.mac9sb.conf"
 
-# =============================================================================
-#  Step 2 — Symlink Dotfiles
-# =============================================================================
+    if [ ! -f "$_newsyslog_src" ]; then
+        warn "  newsyslog config not found at $_newsyslog_src"
+        return 1
+    fi
 
-info "Symlinking dotfiles"
+    render_template "$_newsyslog_src" \
+        "HOME=$REAL_HOME" \
+        "USER=$REAL_USER" \
+        > "$_newsyslog_dest"
+    chown root:wheel "$_newsyslog_dest"
+    chmod 644 "$_newsyslog_dest"
+}
+
+check_brew_bundle() {
+    command_exists brew || return 1
+    [ -f "$DEV_DIR/Brewfile" ] || return 1
+    brew bundle check --file "$DEV_DIR/Brewfile" >/dev/null 2>&1
+}
+
+apply_brew_bundle() {
+    if ! command_exists brew; then
+        info "  Installing Homebrew (this may prompt for password)"
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    fi
+
+    if [ ! -f "$DEV_DIR/Brewfile" ]; then
+        warn "  Brewfile not found at $DEV_DIR/Brewfile"
+        return 1
+    fi
+
+    if ! brew bundle --file "$DEV_DIR/Brewfile"; then
+        warn "  Brew bundle had errors; continuing"
+        return 0
+    fi
+}
+
+check_db_init() {
+    [ -f "$STATE_DIR/state.db" ]
+}
+
+apply_db_init() {
+    mkdir -p "$STATE_DIR" "$LOG_DIR"
+    chown -R "${REAL_USER}:${REAL_GROUP}" "$STATE_DIR" "$LOG_DIR"
+    db_init
+    chown -R "${REAL_USER}:${REAL_GROUP}" "$STATE_DIR"
+}
+
+check_launch_agents() {
+    _plist_list="server-manager.plist sites-watcher.plist backup.plist cloudflared.plist"
+    for _plist_name in $_plist_list; do
+        _label="com.${GITHUB_USER}.${_plist_name%.plist}"
+        if ! launchctl list 2>/dev/null | grep -q "${_label}"; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+apply_launch_agents() {
+    _plist_list="server-manager.plist sites-watcher.plist backup.plist cloudflared.plist"
+    for _plist_name in $_plist_list; do
+        _label="com.${GITHUB_USER}.${_plist_name%.plist}"
+        _dest="$LAUNCH_AGENTS_DIR/${_label}.plist"
+        if [ ! -f "$_dest" ]; then
+            warn "  Missing launch agent: $_dest"
+            return 1
+        fi
+
+        if launchctl bootout "gui/${UID_NUM}/${_label}" 2>/dev/null; then
+            success "  Stopped $_label"
+        else
+            warn "  $_label not loaded"
+        fi
+
+        if launchctl bootstrap "gui/${UID_NUM}" "$_dest" 2>/dev/null; then
+            success "  Loaded $_label"
+        else
+            return 1
+        fi
+    done
+}
+
+check_apache_restart() {
+    return 1
+}
+
+apply_apache_restart() {
+    if sudo apachectl configtest >/dev/null 2>&1; then
+        sudo apachectl restart
+        return 0
+    fi
+    printf '\033[1;31m[FATAL]\033[0m Apache configtest failed — check %s and %s\n' "$CUSTOM_CONF" "$HTTPD_CONF" >&2
+    return 1
+}
+
+run_root_phase() {
+    # =============================================================================
+    #  Step 1 — Touch ID for sudo
+    # =============================================================================
+
+    task "Touch ID for sudo" \
+        check_touch_id \
+        apply_touch_id
+
+    # =============================================================================
+    #  Step 8a — Configure Apache system settings
+    # =============================================================================
+
+    task "Apache system config" \
+        check_apache_system \
+        apply_apache_system
+
+    # =============================================================================
+    #  Step 11 — Install log rotation (newsyslog)
+    # =============================================================================
+
+    task "Installing log rotation config" \
+        check_newsyslog \
+        apply_newsyslog
+}
+
+run_user_phase() {
+    # =============================================================================
+    #  Step 2 — Symlink Dotfiles
+    # =============================================================================
+
+    info "Symlinking dotfiles"
 
 for _src in "$DOTFILES_DIR"/*; do
     [ ! -f "$_src" ] && continue
@@ -237,115 +473,9 @@ else
     error "Swift not found after Xcode CLI tools install. Install Xcode or Xcode CLI tools manually."
 fi
 
-# =============================================================================
-#  Step 5 — Install cloudflared
-# =============================================================================
-
-info "Installing cloudflared"
-if ! command_exists cloudflared; then
-    CF_LATEST=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/cloudflare/cloudflared/releases/latest | sed 's|.*/||')
-    CF_ARCH="arm64"
-    if [ "$(uname -m)" = "x86_64" ]; then
-        CF_ARCH="amd64"
-    fi
-    CF_PKG_URL="https://github.com/cloudflare/cloudflared/releases/download/${CF_LATEST}/cloudflared-${CF_ARCH}.pkg"
-    CF_SHA_URL="${CF_PKG_URL}.sha256"
-    info "Downloading cloudflared ${CF_LATEST}..."
-    TMPDIR_CF="$(mktemp -d)"
-    if curl -sL --fail --max-time 60 "$CF_PKG_URL" -o "$TMPDIR_CF/cloudflared.pkg"; then
-        if curl -sL --fail --max-time 60 "$CF_SHA_URL" -o "$TMPDIR_CF/cloudflared.pkg.sha256"; then
-            _expected="$(awk '{print $1}' "$TMPDIR_CF/cloudflared.pkg.sha256" | head -1)"
-            _actual="$(shasum -a 256 "$TMPDIR_CF/cloudflared.pkg" | awk '{print $1}')"
-            if [ -n "$_expected" ] && [ "$_expected" = "$_actual" ]; then
-                if sudo installer -pkg "$TMPDIR_CF/cloudflared.pkg" -target / >/dev/null 2>&1; then
-                    if command_exists cloudflared; then
-                        success "cloudflared installed: $(cloudflared --version 2>&1 | head -1)"
-                    else
-                        warn "cloudflared pkg installed but binary not found on PATH — check /usr/local/bin"
-                    fi
-                else
-                    warn "cloudflared pkg installer failed — install manually later"
-                fi
-            else
-                warn "cloudflared checksum verification failed — install manually"
-            fi
-        else
-            warn "cloudflared checksum not available — install manually"
-        fi
-    else
-        warn "Failed to download cloudflared — install manually later"
-    fi
-    rm -rf "$TMPDIR_CF"
-else
-    success "cloudflared already installed: $(cloudflared --version 2>&1 | head -1)"
-fi
-
-# =============================================================================
-#  Step 6 — Install GitHub CLI (gh)
-# =============================================================================
-
-info "Installing GitHub CLI (gh)"
-if ! command_exists gh; then
-    GH_LATEST=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/cli/cli/releases/latest | sed 's|.*/||')
-    GH_VERSION="${GH_LATEST#v}"
-    GH_ZIP_URL="https://github.com/cli/cli/releases/download/${GH_LATEST}/gh_${GH_VERSION}_macOS_arm64.zip"
-    info "Downloading gh ${GH_LATEST}..."
-    TMPDIR_GH="$(mktemp -d)"
-    if curl -sL --fail --max-time 60 "$GH_ZIP_URL" -o "$TMPDIR_GH/gh.zip"; then
-        if unzip -q "$TMPDIR_GH/gh.zip" -d "$TMPDIR_GH" 2>/dev/null; then
-            if sudo mv "$TMPDIR_GH/gh_${GH_VERSION}_macOS_arm64/bin/gh" /usr/local/bin/gh 2>/dev/null; then
-                sudo chmod +x /usr/local/bin/gh
-                if command_exists gh; then
-                    success "gh installed: $(gh --version 2>&1 | head -1)"
-                else
-                    warn "gh binary moved but not found on PATH"
-                fi
-            else
-                warn "Failed to move gh to /usr/local/bin — install manually later"
-            fi
-        else
-            warn "Failed to extract gh zip — install manually later"
-        fi
-    else
-        warn "Failed to download gh — install manually later"
-    fi
-    rm -rf "$TMPDIR_GH"
-else
-    success "gh already installed: $(gh --version 2>&1 | head -1)"
-fi
-
-# =============================================================================
-#  Step 7 — Install GitHub Copilot CLI
-# =============================================================================
-
-info "Installing GitHub Copilot CLI"
-if ! command_exists copilot; then
-    COPILOT_LATEST=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/github/copilot-cli/releases/latest | sed 's|.*/||')
-    COPILOT_TAR_URL="https://github.com/github/copilot-cli/releases/download/${COPILOT_LATEST}/copilot-darwin-arm64.tar.gz"
-    info "Downloading GitHub Copilot CLI ${COPILOT_LATEST}..."
-    TMPDIR_COPILOT="$(mktemp -d)"
-    if curl -sL --fail --max-time 60 "$COPILOT_TAR_URL" -o "$TMPDIR_COPILOT/copilot.tar.gz"; then
-        if tar -xzf "$TMPDIR_COPILOT/copilot.tar.gz" -C "$TMPDIR_COPILOT" 2>/dev/null; then
-            if sudo mv "$TMPDIR_COPILOT/copilot" /usr/local/bin/copilot 2>/dev/null; then
-                sudo chmod +x /usr/local/bin/copilot
-                if command_exists copilot; then
-                    success "GitHub Copilot CLI installed: $(copilot --version 2>&1 | head -1 || echo 'installed')"
-                else
-                    warn "Copilot CLI binary moved but not found on PATH"
-                fi
-            else
-                warn "Failed to move copilot binary to /usr/local/bin — install manually later"
-            fi
-        else
-            warn "Failed to extract Copilot CLI tarball — install manually later"
-        fi
-    else
-        warn "Failed to download Copilot CLI — install manually later"
-    fi
-    rm -rf "$TMPDIR_COPILOT"
-else
-    success "GitHub Copilot CLI already installed"
-fi
+task "Homebrew bundle" \
+    check_brew_bundle \
+    apply_brew_bundle
 
 # =============================================================================
 #  Step 8 — Initialize git submodules & install hooks
@@ -371,12 +501,27 @@ fi
 # Install git hooks from utilities/githooks
 if [ -d "$GITHOOKS_DIR" ]; then
     _hooks_dest="$DEV_DIR/.git/hooks"
-    mkdir -p "$_hooks_dest"
+    if [ "$UID_NUM" -eq 0 ]; then
+        sudo -u "$REAL_USER" mkdir -p "$_hooks_dest"
+        if ! chown -R "${REAL_USER}:${REAL_GROUP}" "$_hooks_dest" 2>/dev/null; then
+            warn "  Could not chown $_hooks_dest to ${REAL_USER}:${REAL_GROUP}"
+        fi
+    else
+        mkdir -p "$_hooks_dest"
+    fi
     for _hook in "$GITHOOKS_DIR"/*; do
         [ ! -f "$_hook" ] && continue
         _hook_name="$(basename "$_hook")"
-        cp "$_hook" "$_hooks_dest/$_hook_name"
-        chmod +x "$_hooks_dest/$_hook_name"
+        if [ "$UID_NUM" -eq 0 ]; then
+            if ! sudo -u "$REAL_USER" cp "$_hook" "$_hooks_dest/$_hook_name"; then
+                warn "  Failed to install git hook: $_hook_name"
+                continue
+            fi
+            sudo -u "$REAL_USER" chmod +x "$_hooks_dest/$_hook_name"
+        else
+            cp "$_hook" "$_hooks_dest/$_hook_name"
+            chmod +x "$_hooks_dest/$_hook_name"
+        fi
         success "  Installed git hook: $_hook_name"
     done
 else
@@ -481,58 +626,7 @@ done
 #  Step 8 — Configure Apache (with atomic reload)
 # =============================================================================
 
-info "Configuring Apache"
-
-enable_module() {
-    _mod="$1"
-    if grep -q "^#.*${_mod}" "$HTTPD_CONF"; then
-        sudo sed -i '' "s|^#\\(.*$_mod\\)|\\1|" "$HTTPD_CONF"
-        success "  Enabled $_mod"
-    else
-        success "  $_mod already enabled"
-    fi
-}
-
-sudo cp "$HTTPD_CONF" "${HTTPD_CONF}.bak.$(date +%Y%m%d%H%M%S)"
-for _mod in mod_proxy.so mod_proxy_http.so mod_rewrite.so mod_proxy_wstunnel.so mod_headers.so; do
-    enable_module "$_mod"
-done
-
-if grep -q "^#ServerName" "$HTTPD_CONF"; then
-    sudo sed -i '' 's|^#ServerName.*|ServerName localhost|' "$HTTPD_CONF"
-    success "  Set ServerName localhost"
-else
-    success "  ServerName already configured"
-fi
-
-if ! grep -q "extra/custom.conf" "$HTTPD_CONF"; then
-    printf "\n# Developer custom site configuration\nInclude /private/etc/apache2/extra/custom.conf\n" \
-        | sudo tee -a "$HTTPD_CONF" >/dev/null
-    success "  Added custom.conf Include to httpd.conf"
-else
-    success "  custom.conf Include already in httpd.conf"
-fi
-
-sudo mkdir -p "$APACHE_LOG_DIR"
-sudo chown "${SUDO_USER:-$(logname)}:staff" "$APACHE_LOG_DIR"
-
-# Ensure custom.conf exists and is user-writable (so sites-watcher can update
-# it without sudo — only apachectl needs elevated privileges)
-if [ ! -f "$CUSTOM_CONF" ]; then
-    sudo touch "$CUSTOM_CONF"
-fi
-sudo chown "${SUDO_USER:-$(logname)}:staff" "$CUSTOM_CONF"
-
-# Passwordless sudo for apachectl (used by sites-watcher on every scan)
-_sudoers="/etc/sudoers.d/mac9sb"
-if [ ! -f "$_sudoers" ]; then
-    printf '%s ALL=(root) NOPASSWD: /usr/sbin/apachectl configtest, /usr/sbin/apachectl restart\n' "${SUDO_USER:-$(logname)}" \
-        | sudo tee "$_sudoers" >/dev/null
-    sudo chmod 0440 "$_sudoers"
-    success "  Installed passwordless sudo for apachectl ($_sudoers)"
-else
-    success "  Passwordless sudo for apachectl already configured"
-fi
+info "Configuring Apache site routing"
 
 # Build custom.conf by scanning sites/ for static (.output) and server
 # (.build/release/<exec> or .build/<triple>/release/<exec>) projects — no hardcoded arrays.
@@ -744,8 +838,6 @@ rm -f "$_old_conf" 2>/dev/null
 
 info "Initialising state database & assigning ports"
 
-db_init
-
 # Migrate legacy flat files if they exist (first run after upgrade)
 _legacy_ports="$STATE_DIR/port-assignments"
 _legacy_state="$STATE_DIR/sites-state"
@@ -816,8 +908,8 @@ render_template "$_tunnel_config" "HOME=$HOME" > "$_tunnel_dest"
 success "  Wrote $_tunnel_dest from template"
 
 # Ensure ~/.cloudflared and ~/.ssh are owned by the real user (setup runs as sudo)
-chown -R "${SUDO_USER:-$(logname)}:staff" "$HOME/.cloudflared"
-[ -d "$HOME/.ssh" ] && chown -R "${SUDO_USER:-$(logname)}:staff" "$HOME/.ssh"
+chown -R "${REAL_USER}:${REAL_GROUP}" "$HOME/.cloudflared"
+[ -d "$HOME/.ssh" ] && chown -R "${REAL_USER}:${REAL_GROUP}" "$HOME/.ssh"
 
 # Check if credentials are already in place
 if [ -f "$HOME/.cloudflared/maclong.json" ]; then
@@ -872,31 +964,10 @@ else
 fi
 
 # =============================================================================
-#  Step 11 — Install log rotation (newsyslog)
+#  Step 12 — Render launchd agents (loaded in Phase C)
 # =============================================================================
 
-info "Installing log rotation config"
-
-_newsyslog_src="$NEWSYSLOG_DIR/com.mac9sb.conf"
-_newsyslog_dest="/etc/newsyslog.d/com.mac9sb.conf"
-
-if [ -f "$_newsyslog_src" ]; then
-    render_template "$_newsyslog_src" \
-        "HOME=$HOME" \
-        "USER=${SUDO_USER:-$(logname)}" \
-        | sudo tee "$_newsyslog_dest" >/dev/null
-    sudo chown root:wheel "$_newsyslog_dest"
-    sudo chmod 644 "$_newsyslog_dest"
-    success "  Installed $_newsyslog_dest"
-else
-    warn "  newsyslog config not found at $_newsyslog_src"
-fi
-
-# =============================================================================
-#  Step 12 — Symlink launchd agents
-# =============================================================================
-
-info "Symlinking launchd agents"
+info "Rendering launchd agents"
 
 # All plists are templates with literal paths — rendered per-user into LaunchAgents.
 # server-manager.plist  -> supervises all server binaries (inferred from filesystem)
@@ -917,18 +988,13 @@ for _plist_name in $_plist_list; do
     _label="com.${GITHUB_USER}.${_plist_name%.plist}"
     _dest="$LAUNCH_AGENTS_DIR/${_label}.plist"
 
-    # Unload if already running
-    launchctl bootout "gui/${UID_NUM}/${_label}" 2>/dev/null || true
-
     # Render into LaunchAgents
     render_template "$_src" \
         "HOME=$HOME" \
-        "USER=${SUDO_USER:-$(logname)}" \
+        "USER=${REAL_USER}" \
         > "$_dest"
 
-    # Load the agent
-    launchctl bootstrap "gui/${UID_NUM}" "$_dest" 2>/dev/null || launchctl load "$_dest" 2>/dev/null || true
-    success "  $_label -> rendered and loaded"
+    success "  $_label -> rendered"
 done
 
 # =============================================================================
@@ -951,7 +1017,7 @@ for _dir in "$SITES_DIR"/*/ "$TOOLING_DIR"/*/; do
     if [ -d "$_dir/.build" ]; then
         _owner="$(stat -f '%Su' "$_dir/.build" 2>/dev/null || echo 'unknown')"
         if [ "$_owner" = "root" ]; then
-            sudo chown -R "${SUDO_USER:-$(logname)}:staff" "$_dir/.build" 2>/dev/null || true
+            sudo chown -R "${REAL_USER}:${REAL_GROUP}" "$_dir/.build" 2>/dev/null || true
             success "  Fixed ownership of $_dir/.build (was root)"
         fi
     fi
@@ -963,28 +1029,13 @@ for _dir in "$SITES_DIR"/*/; do
     if [ -d "$_dir/.output" ]; then
         _owner="$(stat -f '%Su' "$_dir/.output" 2>/dev/null || echo 'unknown')"
         if [ "$_owner" = "root" ]; then
-            sudo chown -R "${SUDO_USER:-$(logname)}:staff" "$_dir/.output" 2>/dev/null || true
+            sudo chown -R "${REAL_USER}:${REAL_GROUP}" "$_dir/.output" 2>/dev/null || true
         fi
         chmod -R o+rX "$_dir/.output" 2>/dev/null || true
         chmod o+x "$SITES_DIR" "$_dir" "$_dir/.output" 2>/dev/null || true
     fi
 done
 success "  Directory permissions configured for Apache access"
-
-# =============================================================================
-#  Step 16 — Test & restart Apache
-# =============================================================================
-
-info "Testing and restarting Apache"
-
-if sudo apachectl configtest >/dev/null 2>&1; then
-    success "Apache configuration test passed"
-    sudo apachectl restart
-    success "Apache restarted"
-else
-    printf '\033[1;31m[FATAL]\033[0m Apache configtest failed — check %s and %s\n' "$CUSTOM_CONF" "$HTTPD_CONF" >&2
-    exit 1
-fi
 
 # =============================================================================
 #  Step 14 — R2 backup credentials check
@@ -1005,16 +1056,33 @@ else
     warn "    R2_BUCKET=<bucket-name>"
 fi
 
-# =============================================================================
-#  Summary
-# =============================================================================
+}
 
-printf "\n"
-printf "\033[1;32m=============================================================================\033[0m\n"
-printf "\033[1;32m  Setup Complete!\033[0m\n"
-printf "\033[1;32m=============================================================================\033[0m\n"
-printf "\n"
-printf "  \033[1mSites:\033[0m\n"
+run_services_phase() {
+    # =============================================================================
+    #  Phase C — Start/restart services
+    # =============================================================================
+
+    task "Loading launchd agents" \
+        check_launch_agents \
+        apply_launch_agents
+
+    task "Testing and restarting Apache" \
+        check_apache_restart \
+        apply_apache_restart
+}
+
+run_summary() {
+    # =============================================================================
+    #  Summary
+    # =============================================================================
+
+    printf "\n"
+    printf "\033[1;32m=============================================================================\033[0m\n"
+    printf "\033[1;32m  Setup Complete!\033[0m\n"
+    printf "\033[1;32m=============================================================================\033[0m\n"
+    printf "\n"
+    printf "  \033[1mSites:\033[0m\n"
 
 _any_sites=false
 for _dir in "$SITES_DIR"/*/; do
@@ -1047,6 +1115,49 @@ if [ "$_any_sites" = false ]; then
 fi
 
 printf "\n"
+
+}
+
+phase_args=""
+[ "$PLAN_MODE" -eq 1 ] && phase_args="$phase_args --plan"
+[ "$DRY_RUN" -eq 1 ] && phase_args="$phase_args --dry-run"
+
+if [ -z "$PHASE" ]; then
+    if [ "$UID_NUM" -eq 0 ]; then
+        run_root_phase
+        sudo -u "$REAL_USER" -H "$0" --phase user $phase_args
+        exit 0
+    fi
+
+    RUN_USER_AFTER_ROOT=1 sudo -E "$0" --phase root $phase_args
+    exit $?
+fi
+
+case "$PHASE" in
+    root)
+        if [ "$UID_NUM" -ne 0 ]; then
+            error "Root phase requires sudo."
+        fi
+        run_root_phase
+        if [ "$RUN_USER_AFTER_ROOT" = "1" ]; then
+            sudo -u "$REAL_USER" -H "$0" --phase user $phase_args
+        fi
+        ;;
+    user)
+        if [ "$UID_NUM" -eq 0 ]; then
+            error "User phase must not run as root."
+        fi
+        task "Initialising state database" \
+            check_db_init \
+            apply_db_init
+        run_user_phase
+        run_services_phase
+        run_summary
+        ;;
+    *)
+        error "Unknown phase: $PHASE"
+        ;;
+esac
 printf "  \033[1mTooling:\033[0m\n"
 _any_tooling=false
 for _dir in "$TOOLING_DIR"/*/; do

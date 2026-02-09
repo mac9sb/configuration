@@ -85,14 +85,14 @@ render_template() {
         return 1
     fi
 
-    _rendered="$(cat "$_tmpl_file")"
+    _cmd="cat \"$_tmpl_file\""
     for _pair in "$@"; do
         _key="${_pair%%=*}"
         _val="${_pair#*=}"
         _val="$(escape_sed_replacement "$_val")"
-        _rendered="$(printf '%s' "$_rendered" | sed "s|{{${_key}}}|${_val}|g")"
+        _cmd="$_cmd | perl -pe 's/\\Q{{${_key}}}\\E/${_val}/g'"
     done
-    printf '%s\n' "$_rendered"
+    eval "$_cmd"
 }
 
 # =============================================================================
