@@ -4,6 +4,9 @@
 [submodule "tooling/web-ui"]
 	path = tooling/web-ui
 	url = https://github.com/mac9sb/web-ui.git
+[submodule "tooling/orchestrator"]
+	path = tooling/orchestrator
+	url = https://github.com/mac9sb/orchestrator.git
 [submodule "sites/todos-auth-fluent"]
 	path = sites/todos-auth-fluent
 	url = https://github.com/mac9sb/todos-auth-fluent.git

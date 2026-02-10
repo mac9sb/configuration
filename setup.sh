@@ -13,16 +13,15 @@ set -e
 #    - CLI tooling (cloudflared, gh, opencode)
 #    - Git submodule initialization & hook installation
 #    - Building Swift projects (with rollback preservation)
-#    - Apache with mod_proxy/mod_rewrite/mod_headers + per-site config
+#    - Apache with mod_proxy/mod_rewrite/mod_headers
 #    - Cloudflare tunnel config (in-repo config, credentials off-repo)
-#    - SQLite state database initialisation + port assignments
-#    - Symlinked launchd agents (server-manager, sites-watcher, backup, cloudflared)
+#    - Orchestrator daemon installation
+#    - Launchd agents (backup, cloudflared)
 #    - Log rotation via newsyslog
 #
 #  All runtime state is stored in a single SQLite database (WAL mode)
-#  at ~/Library/Application Support/com.mac9sb/state.db — shared by
-#  server-manager, sites-watcher, and restart-server.sh for atomic,
-#  concurrent-safe access.
+#  at ~/Library/Application Support/com.mac9sb/state.db — managed by
+#  orchestrator for atomic, concurrent-safe access.
 #
 #  Repos are managed entirely as git submodules. No hardcoded arrays —
 #  everything is derived from .gitmodules and filesystem state.
@@ -83,22 +82,13 @@ APACHE_LOG_DIR="/var/log/apache2/sites"
 LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 
 # --- Utility directories ---
-APACHE_TMPL_DIR="$UTILITIES_DIR/apache"
-LAUNCHD_DIR="$UTILITIES_DIR/launchd"
-SCRIPTS_DIR="$UTILITIES_DIR/scripts"
 DOTFILES_DIR="$UTILITIES_DIR/dotfiles"
 GITHOOKS_DIR="$UTILITIES_DIR/githooks"
-CLOUDFLARED_DIR="$UTILITIES_DIR/cloudflared"
-NEWSYSLOG_DIR="$UTILITIES_DIR/newsyslog"
-
-# --- Port allocation ----------------------------------------------------------
-SERVER_PORT_START=8000
-
-# --- Classification timeout (seconds) ----------------------------------------
-CLASSIFY_TIMEOUT=15
-
-# --- Source shared SQLite helpers ---------------------------------------------
-. "$SCRIPTS_DIR/db.sh"
+ORCH_RESOURCES="$TOOLING_DIR/orchestrator/Sources/OrchestratorCLI/Resources"
+ORCH_LAUNCHD_DIR="$ORCH_RESOURCES/launchd"
+ORCH_SCRIPTS_DIR="$ORCH_RESOURCES/scripts"
+ORCH_CLOUDFLARED_DIR="$ORCH_RESOURCES/cloudflared"
+ORCH_NEWSYSLOG_DIR="$ORCH_RESOURCES/newsyslog"
 
 UID_NUM="$(id -u)"
 
@@ -169,33 +159,6 @@ render_template() {
     eval "$_cmd"
 }
 
-# Run a command with a timeout.
-# Usage: run_with_timeout <seconds> <command> [args...]
-# Returns 0 if the command finished in time, 1 if it was killed.
-run_with_timeout() {
-    _timeout="$1"
-    shift
-
-    setsid "$@" &
-    _cmd_pid=$!
-
-    (
-        sleep "$_timeout"
-        kill -TERM "-$_cmd_pid" 2>/dev/null
-    ) &
-    _timer_pid=$!
-
-    if wait "$_cmd_pid" 2>/dev/null; then
-        kill "$_timer_pid" 2>/dev/null
-        wait "$_timer_pid" 2>/dev/null
-        return 0
-    fi
-
-    kill "$_timer_pid" 2>/dev/null
-    wait "$_timer_pid" 2>/dev/null
-    return 1
-}
-
 check_touch_id() {
     [ -f /etc/pam.d/sudo_local ] && grep -q "pam_tid.so" /etc/pam.d/sudo_local 2>/dev/null
 }
@@ -263,7 +226,7 @@ check_newsyslog() {
 }
 
 apply_newsyslog() {
-    _newsyslog_src="$NEWSYSLOG_DIR/com.mac9sb.conf"
+    _newsyslog_src="$ORCH_NEWSYSLOG_DIR/com.mac9sb.conf"
     _newsyslog_dest="/etc/newsyslog.d/com.mac9sb.conf"
 
     if [ ! -f "$_newsyslog_src" ]; then
@@ -274,7 +237,7 @@ apply_newsyslog() {
     render_template "$_newsyslog_src" \
         "HOME=$REAL_HOME" \
         "USER=$REAL_USER" \
-        > "$_newsyslog_dest"
+        | sudo tee "$_newsyslog_dest" >/dev/null
     chown root:wheel "$_newsyslog_dest"
     chmod 644 "$_newsyslog_dest"
 }
@@ -302,19 +265,8 @@ apply_brew_bundle() {
     fi
 }
 
-check_db_init() {
-    [ -f "$STATE_DIR/state.db" ]
-}
-
-apply_db_init() {
-    mkdir -p "$STATE_DIR" "$LOG_DIR"
-    chown -R "${REAL_USER}:${REAL_GROUP}" "$STATE_DIR" "$LOG_DIR"
-    db_init
-    chown -R "${REAL_USER}:${REAL_GROUP}" "$STATE_DIR"
-}
-
 check_launch_agents() {
-    _plist_list="server-manager.plist sites-watcher.plist backup.plist cloudflared.plist"
+    _plist_list="backup.plist cloudflared.plist"
     for _plist_name in $_plist_list; do
         _label="com.${GITHUB_USER}.${_plist_name%.plist}"
         if ! launchctl list 2>/dev/null | grep -q "${_label}"; then
@@ -325,7 +277,7 @@ check_launch_agents() {
 }
 
 apply_launch_agents() {
-    _plist_list="server-manager.plist sites-watcher.plist backup.plist cloudflared.plist"
+    _plist_list="backup.plist cloudflared.plist"
     for _plist_name in $_plist_list; do
         _label="com.${GITHUB_USER}.${_plist_name%.plist}"
         _dest="$LAUNCH_AGENTS_DIR/${_label}.plist"
@@ -346,6 +298,21 @@ apply_launch_agents() {
             return 1
         fi
     done
+}
+
+check_orchestrator_daemon() {
+    [ -f /Library/LaunchDaemons/com.mac9sb.orchestrator.plist ] || return 1
+    launchctl list 2>/dev/null | grep -q "com.mac9sb.orchestrator"
+}
+
+apply_orchestrator_daemon() {
+    [ -d "$TOOLING_DIR/orchestrator" ] || return 1
+    _bin_path="$(cd "$TOOLING_DIR/orchestrator" && swift build -c release --show-bin-path)"
+    if [ -z "$_bin_path" ] || [ ! -x "$_bin_path/orchestrator" ]; then
+        warn "  orchestrator binary not found"
+        return 1
+    fi
+    sudo -E HOME="$REAL_HOME" "$_bin_path/orchestrator" install-daemon --replace-legacy
 }
 
 check_apache_restart() {
@@ -378,13 +345,7 @@ run_root_phase() {
         check_apache_system \
         apply_apache_system
 
-    # =============================================================================
-    #  Step 11 — Install log rotation (newsyslog)
-    # =============================================================================
-
-    task "Installing log rotation config" \
-        check_newsyslog \
-        apply_newsyslog
+    # Log rotation is installed in the user phase (after submodules are available).
 }
 
 run_user_phase() {
@@ -529,7 +490,15 @@ else
 fi
 
 # =============================================================================
-#  Step 7 — Build Swift projects (with rollback preservation)
+#  Step 9 — Install log rotation (newsyslog)
+# =============================================================================
+
+task "Installing log rotation config" \
+    check_newsyslog \
+    apply_newsyslog
+
+# =============================================================================
+#  Step 10 — Build Swift projects (with rollback preservation)
 # =============================================================================
 
 info "Building Swift projects"
@@ -565,21 +534,7 @@ for _dir in "$SITES_DIR"/*/; do
         continue
     fi
     if [ -f "$_dir/Package.swift" ]; then
-        _exec_name="$(get_exec_name "$_dir")" || true
-        if [ -z "$_exec_name" ]; then
-            warn "  $_name: no executable target found in Package.swift — skipping"
-            continue
-        fi
-
-        _default_binary="$_dir/.build/release/$_exec_name"
-        _binary="$(get_release_binary "$_dir" "$_exec_name")" || _binary="$_default_binary"
-
-        # Preserve current run binary as backup before rebuilding
-        if [ -f "${_binary}.run" ]; then
-            cp -f "${_binary}.run" "${_binary}.bak" 2>/dev/null || true
-        fi
-
-        info "  Building site: $_name (release, executable: $_exec_name)..."
+        info "  Building site: $_name (release)..."
         _build_log="$(mktemp)"
         if (cd "$_dir" && swift build -c release > "$_build_log" 2>&1); then
             tail -1 "$_build_log"
@@ -587,313 +542,39 @@ for _dir in "$SITES_DIR"/*/; do
         else
             tail -5 "$_build_log"
             warn "  $_name build failed"
-            # Restore backup if build produced no binary
-            if [ ! -f "$_binary" ] && [ -f "${_binary}.bak" ]; then
-                cp -f "${_binary}.bak" "$_binary" 2>/dev/null || true
-                warn "  Restored backup binary for $_name"
-            fi
         fi
         rm -f "$_build_log"
-
-        # Re-resolve the binary path after build (SwiftPM may use target-triple output).
-        _binary="$(get_release_binary "$_dir" "$_exec_name")" || _binary="$_default_binary"
-
-        # Classify by running: if the binary exits and produces .output
-        # it's a static site generator. If it blocks, it's a server.
-        if [ ! -d "$_dir/.output" ] && [ -f "$_binary" ]; then
-            info "  Classifying $_name (timeout ${CLASSIFY_TIMEOUT}s)..."
-            # Pass "sh" as $0 so $_dir becomes $1 and $_binary becomes $2 inside the script.
-            if run_with_timeout "$CLASSIFY_TIMEOUT" sh -c 'cd "$1" && exec "$2"' sh "$_dir" "$_binary" 2>/dev/null; then
-                if [ -d "$_dir/.output" ]; then
-                    success "  $_name -> static site (.output generated)"
-                else
-                    success "  $_name exited cleanly (no .output produced)"
-                fi
-            else
-                success "  $_name did not exit within ${CLASSIFY_TIMEOUT}s (server)"
-            fi
-        fi
-
-        if [ -d "$_dir/.output" ]; then
-            success "  $_name -> static site"
-        elif [ -f "$_binary" ]; then
-            success "  $_name -> server binary (launchd will manage)"
-        fi
     fi
 done
 
 # =============================================================================
-#  Step 8 — Configure Apache (with atomic reload)
+#  Step 11 — Prepare Apache placeholder (orchestrator manages config)
 # =============================================================================
 
-info "Configuring Apache site routing"
+info "Preparing Apache config placeholder"
 
-# Build custom.conf by scanning sites/ for static (.output) and server
-# (.build/release/<exec> or .build/<triple>/release/<exec>) projects — no hardcoded arrays.
-# Port assignments come from the SQLite database (initialised in step 9).
-#
-# Domain routing is derived from directory names + primary domain from
-# the cloudflared config (# primary-domain: maclong.dev):
-#   sites/maclong.dev/   -> VirtualHost maclong.dev         (custom domain)
-#   sites/api-thing/     -> VirtualHost api-thing.maclong.dev (subdomain)
-#   sites/cool-app.com/  -> VirtualHost cool-app.com        (custom domain)
-#   All sites            -> localhost/site-name/             (path-based dev)
+mkdir -p "$STATE_DIR" "$LOG_DIR"
+chown -R "${REAL_USER}:${REAL_GROUP}" "$STATE_DIR" "$LOG_DIR" 2>/dev/null || true
 
-# Parse primary domain from cloudflared config
-_cf_config="$CLOUDFLARED_DIR/config.yml"
-PRIMARY_DOMAIN=""
-if [ -f "$_cf_config" ]; then
-    PRIMARY_DOMAIN="$(sed -n 's/^# *primary-domain: *//p' "$_cf_config" | head -1 | tr -d '[:space:]')"
-fi
-
-if [ -n "$PRIMARY_DOMAIN" ] && ! is_safe_identifier "$PRIMARY_DOMAIN"; then
-    warn "  Invalid primary-domain in cloudflared config — subdomain routing disabled"
-    PRIMARY_DOMAIN=""
-fi
-
-if [ -n "$PRIMARY_DOMAIN" ]; then
-    success "  Primary domain: $PRIMARY_DOMAIN"
-else
-    warn "  No primary-domain found in cloudflared config — subdomain routing disabled"
-fi
-
-# Resolve the public domain for a site directory name
-resolve_domain() {
-    case "$1" in
-        *.*) printf '%s' "$1"; return 0 ;;
-        *)
-            if [ -n "$PRIMARY_DOMAIN" ]; then
-                printf '%s.%s' "$1" "$PRIMARY_DOMAIN"
-                return 0
-            fi
-            return 1
-            ;;
-    esac
-}
-
-_conf_file="$(mktemp)"
-_vhost_file="$(mktemp)"
-_default_file="$(mktemp)"
-
-for _dir in "$SITES_DIR"/*/; do
-    [ ! -d "$_dir" ] && continue
-    _name="$(basename "$_dir")"
-    if ! is_safe_identifier "$_name"; then
-        warn "  $_name: invalid site name — skipping"
-        continue
-    fi
-
-    if [ -d "$_dir/.output" ]; then
-        _output_dir="$_dir/.output"
-        chmod -R o+rX "$_output_dir" 2>/dev/null || true
-        db_set_site "$_name" "static"
-
-        # Path-based entry (always — for localhost dev access)
-        render_template "$APACHE_TMPL_DIR/static-site.conf.template" \
-            "SITE_NAME=$_name" \
-            "OUTPUT_DIR=$_output_dir" \
-            "LOG_DIR=$APACHE_LOG_DIR" \
-            >> "$_default_file"
-        printf '\n' >> "$_default_file"
-
-        # VirtualHost entry (domain or subdomain)
-        _domain="$(resolve_domain "$_name")" || true
-        if [ -n "$_domain" ]; then
-            render_template "$APACHE_TMPL_DIR/static-vhost.conf.template" \
-                "SITE_NAME=$_name" \
-                "DOMAIN=$_domain" \
-                "OUTPUT_DIR=$_output_dir" \
-                "LOG_DIR=$APACHE_LOG_DIR" \
-                >> "$_vhost_file"
-            printf '\n' >> "$_vhost_file"
-            success "  $_domain -> static ($_name)"
-        else
-            success "  localhost/$_name -> static (path-based only)"
-        fi
-
-    else
-        # Check for a server binary using the executable name from Package.swift
-        _exec_name="$(get_exec_name "$_dir")" || true
-        _binary=""
-        if [ -n "$_exec_name" ]; then
-            _binary="$(get_release_binary "$_dir" "$_exec_name")" || true
-        fi
-        _has_binary=false
-        if [ -n "$_binary" ] && [ -f "$_binary" ]; then
-            _has_binary=true
-        fi
-
-        if [ "$_has_binary" = true ]; then
-            _port="$(db_get_port "$_name")"
-            db_set_site "$_name" "server"
-
-            # Path-based entry (always — for localhost dev access)
-            render_template "$APACHE_TMPL_DIR/server-site.conf.template" \
-                "SITE_NAME=$_name" \
-                "PORT=$_port" \
-                "LOG_DIR=$APACHE_LOG_DIR" \
-                >> "$_default_file"
-            printf '\n' >> "$_default_file"
-
-            # VirtualHost entry (domain or subdomain)
-            _domain="$(resolve_domain "$_name")" || true
-            if [ -n "$_domain" ]; then
-                render_template "$APACHE_TMPL_DIR/server-vhost.conf.template" \
-                    "SITE_NAME=$_name" \
-                    "DOMAIN=$_domain" \
-                    "PORT=$_port" \
-                    "LOG_DIR=$APACHE_LOG_DIR" \
-                    >> "$_vhost_file"
-                printf '\n' >> "$_vhost_file"
-                success "  $_domain -> proxy :$_port ($_name)"
-            else
-                success "  localhost/$_name -> proxy :$_port (path-based only)"
-            fi
-        fi
-    fi
-done
-
-# --- Assemble the final config ---
-cat > "$_conf_file" <<APACHE_HEADER
+cat > "$CUSTOM_CONF" <<'APACHE_HEADER'
 # =============================================================================
-#  Auto-generated by setup.sh — do not edit directly.
-#  Regenerated by sites-watcher.sh when sites change.
-#
-#  Primary domain: ${PRIMARY_DOMAIN:-"(not configured)"}
-#  Routing:
-#    sites/maclong.dev/   -> VirtualHost maclong.dev              (custom domain)
-#    sites/api-thing/     -> VirtualHost api-thing.${PRIMARY_DOMAIN:-"???"}  (subdomain)
-#    All sites            -> localhost/site-name/                  (path-based dev)
+#  Auto-generated by setup.sh — orchestrator will populate this file.
 # =============================================================================
-
 APACHE_HEADER
 
-_has_vhosts=false
-_has_defaults=false
-[ -s "$_vhost_file" ] && _has_vhosts=true
-[ -s "$_default_file" ] && _has_defaults=true
+success "  Wrote $CUSTOM_CONF"
 
-if [ "$_has_vhosts" = true ] || [ "$_has_defaults" = true ]; then
-
-    # Default VirtualHost must come first (catches localhost + unmatched requests)
-    cat >> "$_conf_file" <<'DEFAULT_OPEN'
-# --- Default VirtualHost (localhost path-based access for all sites) ---
-<VirtualHost *:80>
-    ServerName localhost
-
-    ProxyPreserveHost On
-    ProxyRequests Off
-
-    # --- Global proxy headers (Cloudflare terminates TLS) ---
-    RequestHeader set X-Forwarded-Proto "https"
-    RequestHeader set X-Forwarded-Port "443"
-
-DEFAULT_OPEN
-
-    if [ "$_has_defaults" = true ]; then
-        cat "$_default_file" >> "$_conf_file"
-    fi
-
-    cat >> "$_conf_file" <<'DEFAULT_CLOSE'
-</VirtualHost>
-
-DEFAULT_CLOSE
-
-    # Domain / subdomain VirtualHosts
-    if [ "$_has_vhosts" = true ]; then
-        cat "$_vhost_file" >> "$_conf_file"
-    fi
-fi
-
-rm -f "$_vhost_file" "$_default_file"
-
-# Atomic swap: backup old config, install new, validate, rollback on failure
-_old_conf=""
-if [ -f "$CUSTOM_CONF" ]; then
-    _old_conf="$(mktemp)"
-    cp "$CUSTOM_CONF" "$_old_conf"
-fi
-
-cp "$_conf_file" "$CUSTOM_CONF"
-rm -f "$_conf_file"
-
-if sudo apachectl configtest >/dev/null 2>&1; then
-    success "  Wrote $CUSTOM_CONF (configtest passed)"
-else
-    if [ -n "$_old_conf" ] && [ -f "$_old_conf" ]; then
-        cp "$_old_conf" "$CUSTOM_CONF"
-        printf '\033[1;31m[FATAL]\033[0m Apache configtest failed — rolled back to previous %s\n' "$CUSTOM_CONF" >&2
-    else
-        rm -f "$CUSTOM_CONF"
-        printf '\033[1;31m[FATAL]\033[0m Apache configtest failed — removed broken %s\n' "$CUSTOM_CONF" >&2
-    fi
-    rm -f "$_old_conf" 2>/dev/null
-    exit 1
-fi
-rm -f "$_old_conf" 2>/dev/null
+chmod +x "$ORCH_SCRIPTS_DIR/backup.sh" 2>/dev/null || true
 
 # =============================================================================
-#  Step 9 — Initialise SQLite state database & assign server ports
-# =============================================================================
-
-info "Initialising state database & assigning ports"
-
-# Migrate legacy flat files if they exist (first run after upgrade)
-_legacy_ports="$STATE_DIR/port-assignments"
-_legacy_state="$STATE_DIR/sites-state"
-
-if [ -f "$_legacy_ports" ]; then
-    db_import_port_assignments "$_legacy_ports"
-    mv "$_legacy_ports" "${_legacy_ports}.migrated"
-    success "  Migrated legacy port-assignments -> database"
-fi
-
-if [ -f "$_legacy_state" ]; then
-    db_import_sites_state "$_legacy_state"
-    mv "$_legacy_state" "${_legacy_state}.migrated"
-    success "  Migrated legacy sites-state -> database"
-fi
-
-# Remove legacy PID directory and files (now tracked in the database)
-if [ -d "$STATE_DIR/pids" ]; then
-    rm -rf "$STATE_DIR/pids"
-    success "  Removed legacy pids/ directory"
-fi
-rm -f "$STATE_DIR/server-manager.pid" "$STATE_DIR/restart-request" 2>/dev/null
-
-# Ensure all discovered server sites have port assignments in the database
-for _dir in "$SITES_DIR"/*/; do
-    [ ! -d "$_dir" ] && continue
-    _name="$(basename "$_dir")"
-    if ! is_safe_identifier "$_name"; then
-        warn "  $_name: invalid site name — skipping"
-        continue
-    fi
-
-    # Only server sites (have binary but no .output)
-    [ -d "$_dir/.output" ] && continue
-    _exec_name="$(get_exec_name "$_dir")" || true
-    [ -z "$_exec_name" ] && continue
-    _binary="$(get_release_binary "$_dir" "$_exec_name")" || continue
-
-    _port="$(db_get_port "$_name")"
-    success "  Server: $_name -> port $_port (binary: $_exec_name)"
-done
-
-chmod +x "$SCRIPTS_DIR/restart-server.sh" 2>/dev/null || true
-chmod +x "$SCRIPTS_DIR/server-manager.sh" 2>/dev/null || true
-chmod +x "$SCRIPTS_DIR/sites-watcher.sh"  2>/dev/null || true
-chmod +x "$SCRIPTS_DIR/backup.sh"         2>/dev/null || true
-
-# =============================================================================
-#  Step 10 — Configure Cloudflare tunnel (in-repo config, credentials off-repo)
+#  Step 12 — Configure Cloudflare tunnel (in-repo config, credentials off-repo)
 # =============================================================================
 
 info "Configuring Cloudflare tunnel"
 
 mkdir -p "$HOME/.cloudflared"
 
-_tunnel_config="$CLOUDFLARED_DIR/config.yml"
+_tunnel_config="$ORCH_CLOUDFLARED_DIR/config.yml"
 _tunnel_dest="$HOME/.cloudflared/config.yml"
 
 # Render ~/.cloudflared/config.yml from in-repo template
@@ -964,21 +645,19 @@ else
 fi
 
 # =============================================================================
-#  Step 12 — Render launchd agents (loaded in Phase C)
+#  Step 13 — Render launchd agents (loaded in Phase C)
 # =============================================================================
 
 info "Rendering launchd agents"
 
 # All plists are templates with literal paths — rendered per-user into LaunchAgents.
-# server-manager.plist  -> supervises all server binaries (inferred from filesystem)
-# sites-watcher.plist   -> watches ~/Developer/sites and updates Apache config
-# backup.plist          -> daily SQLite backup to R2 at 03:00
-# cloudflared.plist     -> runs the Cloudflare tunnel (only if tunnel is configured)
+# backup.plist      -> daily SQLite backup to R2 at 03:00
+# cloudflared.plist -> runs the Cloudflare tunnel (only if tunnel is configured)
 
-_plist_list="server-manager.plist sites-watcher.plist backup.plist cloudflared.plist"
+_plist_list="backup.plist cloudflared.plist"
 
 for _plist_name in $_plist_list; do
-    _src="$LAUNCHD_DIR/$_plist_name"
+    _src="$ORCH_LAUNCHD_DIR/$_plist_name"
 
     if [ ! -f "$_src" ]; then
         warn "$_plist_name not found at $_src — skipping"
@@ -998,7 +677,7 @@ for _plist_name in $_plist_list; do
 done
 
 # =============================================================================
-#  Step 13 — Test & restart Apache
+#  Step 14 — Test & restart Apache
 # =============================================================================
 
 info "Fixing directory permissions for Apache"
@@ -1038,7 +717,7 @@ done
 success "  Directory permissions configured for Apache access"
 
 # =============================================================================
-#  Step 14 — R2 backup credentials check
+#  Step 15 — R2 backup credentials check
 # =============================================================================
 
 info "Checking backup prerequisites"
@@ -1063,6 +742,10 @@ run_services_phase() {
     #  Phase C — Start/restart services
     # =============================================================================
 
+    task "Installing orchestrator daemon" \
+        check_orchestrator_daemon \
+        apply_orchestrator_daemon
+
     task "Loading launchd agents" \
         check_launch_agents \
         apply_launch_agents
@@ -1085,11 +768,18 @@ run_summary() {
     printf "  \033[1mSites:\033[0m\n"
 
 _any_sites=false
+_primary_domain=""
+if [ -f "$ORCH_CLOUDFLARED_DIR/config.yml" ]; then
+    _primary_domain="$(sed -n 's/^# *primary-domain: *//p' "$ORCH_CLOUDFLARED_DIR/config.yml" | head -1 | tr -d '[:space:]')"
+fi
 for _dir in "$SITES_DIR"/*/; do
     [ ! -d "$_dir" ] && continue
     _name="$(basename "$_dir")"
-    _domain="$(resolve_domain "$_name")" || true
-    _exec_name="$(get_exec_name "$_dir")" || true
+    _domain=""
+    case "$_name" in
+        *.*) _domain="$_name" ;;
+        *) [ -n "$_primary_domain" ] && _domain="${_name}.${_primary_domain}" ;;
+    esac
     if [ -d "$_dir/.output" ]; then
         if [ -n "$_domain" ]; then
             printf "    ✓ %s -> static (http://%s/)\n" "$_name" "$_domain"
@@ -1097,12 +787,11 @@ for _dir in "$SITES_DIR"/*/; do
             printf "    ✓ %s -> static (http://localhost/%s/)\n" "$_name" "$_name"
         fi
         _any_sites=true
-    elif [ -n "$_exec_name" ] && _binary="$(get_release_binary "$_dir" "$_exec_name")"; then
-        _port="$(db_get_port_if_exists "$_name")"
+    elif [ -f "$_dir/Package.swift" ]; then
         if [ -n "$_domain" ]; then
-            printf "    ✓ %s -> server :%s (http://%s/)\n" "$_name" "${_port:-?}" "$_domain"
+            printf "    ✓ %s -> server (http://%s/)\n" "$_name" "$_domain"
         else
-            printf "    ✓ %s -> server :%s (http://localhost/%s/)\n" "$_name" "${_port:-?}" "$_name"
+            printf "    ✓ %s -> server (http://localhost/%s/)\n" "$_name" "$_name"
         fi
         _any_sites=true
     else
@@ -1147,9 +836,6 @@ case "$PHASE" in
         if [ "$UID_NUM" -eq 0 ]; then
             error "User phase must not run as root."
         fi
-        task "Initialising state database" \
-            check_db_init \
-            apply_db_init
         run_user_phase
         run_services_phase
         run_summary

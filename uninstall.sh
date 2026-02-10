@@ -6,7 +6,7 @@ set -e
 #  Author: Mac (maclong9)
 #
 #  This script reverses the setup performed by setup.sh:
-#    - Stops server-manager and unloads all symlinked launchd agents
+#    - Stops orchestrator and unloads legacy launchd agents
 #    - Removes Apache custom config and restores httpd.conf backup
 #    - Removes SQLite state database, backups, and logs from ~/Library/
 #    - Removes dotfile symlinks (preserves source files in utilities/)
@@ -23,7 +23,6 @@ GITHUB_USER="mac9sb"
 DEV_DIR="$HOME/Developer"
 SITES_DIR="$DEV_DIR/sites"
 UTILITIES_DIR="$DEV_DIR/utilities"
-SCRIPTS_DIR="$UTILITIES_DIR/scripts"
 DOTFILES_DIR="$UTILITIES_DIR/dotfiles"
 STATE_DIR="$HOME/Library/Application Support/com.mac9sb"
 APP_LOG_DIR="$HOME/Library/Logs/com.mac9sb"
@@ -31,9 +30,6 @@ LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 HTTPD_CONF="/etc/apache2/httpd.conf"
 CUSTOM_CONF="/etc/apache2/extra/custom.conf"
 APACHE_LOG_DIR="/var/log/apache2/sites"
-
-# Source shared helpers for get_exec_name()
-. "$SCRIPTS_DIR/db.sh"
 
 UID_NUM="$(id -u)"
 REMOVE_TOOLS=false
@@ -72,9 +68,9 @@ printf '\033[1;31m==============================================================
 cat <<EOF
 
   This will:
-    - Stop server-manager and all managed server processes
+    - Stop orchestrator and unload legacy launchd agents
     - Unload and remove all symlinked launchd agents
-      (server-manager, sites-watcher, backup, cloudflared)
+      (legacy agents + backup, cloudflared)
     - Remove Apache custom site configuration
     - Remove SQLite state database ($STATE_DIR/state.db)
     - Remove local backups ($STATE_DIR/backups/)
@@ -92,7 +88,7 @@ cat <<'EOF'
 
   This will NOT:
     - Delete submodule source code (sites/, tooling/)
-    - Delete template/script files (utilities/)
+    - Delete orchestrator resource templates/scripts (tooling/orchestrator/Sources/OrchestratorCLI/Resources/)
     - Delete SSH keys (~/.ssh/id_ed25519)
     - Delete R2 credentials (.env.local)
     - Modify the git repository itself
@@ -112,7 +108,7 @@ printf "\n"
 
 info "Step 1/8: Removing launchd agents"
 
-# Stop the server-manager first (it will SIGTERM all child server processes)
+# Stop legacy agents first
 for _agent_name in server-manager sites-watcher backup cloudflared; do
     _label="com.${GITHUB_USER}.${_agent_name}"
     _plist="${LAUNCH_AGENTS_DIR}/${_label}.plist"
@@ -133,6 +129,18 @@ for _plist in "${LAUNCH_AGENTS_DIR}"/com.${GITHUB_USER}.*.plist; do
 done
 
 success "All launchd agents removed"
+
+# Stop and remove orchestrator LaunchDaemon
+if [ -f "/Library/LaunchDaemons/com.mac9sb.orchestrator.plist" ]; then
+    sudo launchctl bootout system /Library/LaunchDaemons/com.mac9sb.orchestrator.plist 2>/dev/null || true
+    sudo rm -f /Library/LaunchDaemons/com.mac9sb.orchestrator.plist
+    success "Stopped and removed orchestrator daemon"
+fi
+
+if [ -f "/usr/local/bin/orchestrator" ]; then
+    sudo rm -f /usr/local/bin/orchestrator
+    success "Removed /usr/local/bin/orchestrator"
+fi
 
 # =============================================================================
 #  Step 2 — Remove watcher runtime state and backups
@@ -351,21 +359,13 @@ fi
 info "Step 7/8: Cleaning up rollback binaries"
 
 _cleaned_binaries=0
-for _dir in "$SITES_DIR"/*/; do
-    [ ! -d "$_dir" ] && continue
-    _exec_name="$(get_exec_name "$_dir")" || true
-    [ -z "$_exec_name" ] && continue
-    for _suffix in .run .bak .last-good; do
-        for _file in \
-            "$_dir/.build/release/${_exec_name}${_suffix}" \
-            "$_dir"/.build/*/release/"${_exec_name}${_suffix}"; do
-            if [ -f "$_file" ]; then
-                rm -f "$_file"
-                _cleaned_binaries=$((_cleaned_binaries + 1))
-            fi
-        done
-    done
-done
+while IFS= read -r _file; do
+    [ -z "$_file" ] && continue
+    rm -f "$_file"
+    _cleaned_binaries=$((_cleaned_binaries + 1))
+done <<EOF
+$(find "$SITES_DIR" -type f \( -name "*.run" -o -name "*.bak" -o -name "*.last-good" \) 2>/dev/null)
+EOF
 
 if [ "$_cleaned_binaries" -gt 0 ]; then
     success "  Removed $_cleaned_binaries rollback/run binary file(s)"
@@ -406,7 +406,7 @@ printf '\033[1;32m==============================================================
 printf '\n  \033[1mRemoved:\033[0m\n'
 cat <<EOF
     - launchd agents from $LAUNCH_AGENTS_DIR/
-      (server-manager, sites-watcher, backup, cloudflared)
+      (legacy agents + backup, cloudflared)
     - Application state from $STATE_DIR/
     - Local backup archives from $STATE_DIR/backups/
     - Application logs from $APP_LOG_DIR/
@@ -423,7 +423,7 @@ EOF
 printf '\n  \033[1mPreserved:\033[0m\n'
 cat <<EOF
     - Source code in sites/, tooling/
-    - Templates and scripts in utilities/
+    - Templates and scripts in tooling/orchestrator/Sources/OrchestratorCLI/Resources/
     - Dotfile sources in utilities/dotfiles/
     - SSH keys in ~/.ssh/
     - R2 credentials (.env.local)

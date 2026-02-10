@@ -11,15 +11,17 @@ Personal macOS development environment — manages sites, tooling, and infrastru
 ├── .env.example             # R2 credentials template (tracked)
 ├── .env.local               # R2 credentials (gitignored)
 ├── utilities/
-│   ├── apache/              # Apache config templates
-│   ├── cloudflared/         # Tunnel + primary domain config
 │   ├── dotfiles/            # Symlinked to ~/.*
-│   ├── githooks/            # Installed to .git/hooks/ during setup
-│   ├── launchd/             # Launchd plist templates (rendered into ~/Library/LaunchAgents)
-│   ├── newsyslog/           # Log rotation config
-│   └── scripts/             # Runtime scripts
-├── sites/                   # Website submodules
-└── tooling/                 # CLI tool submodules
+│   └── githooks/            # Installed to .git/hooks/ during setup
+├── tooling/
+│   ├── orchestrator/
+│   │   └── Sources/OrchestratorCLI/Resources/
+│   │       ├── cloudflared/ # Tunnel + primary domain config template
+│   │       ├── launchd/     # Launchd plist templates
+│   │       ├── newsyslog/   # Log rotation config template
+│   │       └── scripts/     # Runtime scripts
+│   └── <other tools>/       # CLI tool submodules
+└── sites/                   # Website submodules
 ```
 
 ## Quick Start
@@ -49,7 +51,7 @@ Internet → Cloudflare Tunnel (maclong) → Apache :80 → VirtualHost routing
                          localhost/site-name/  ← path-based dev access for all
 ```
 
-- **Primary domain**: set in `utilities/cloudflared/config.yml` via `# primary-domain: maclong.dev`
+- **Primary domain**: set in `tooling/orchestrator/Sources/OrchestratorCLI/Resources/cloudflared/config.yml` via `# primary-domain: maclong.dev`
 - **Domain sites**: directory name contains a dot → custom domain VirtualHost (e.g. `sites/cool-app.com/`)
 - **Subdomain sites**: directory name has no dot → subdomain of primary domain (e.g. `sites/api/` → `api.maclong.dev`)
 - **Local dev**: every site is also accessible at `http://localhost/site-name/` via path-based routing
@@ -59,7 +61,7 @@ Internet → Cloudflare Tunnel (maclong) → Apache :80 → VirtualHost routing
 
 ## Submodules
 
-Submodules are the source of truth for what repos exist, Apache/server-manager config, and cloudflared ingress entries. Adding or removing a submodule is all you need to do for routing — custom domains still require a DNS route to the tunnel (see below).
+Submodules are the source of truth for what repos exist; orchestrator derives Apache and cloudflared routing directly from the filesystem. Adding or removing a submodule is all you need to do for routing — custom domains still require a DNS route to the tunnel (see below).
 
 ### Adding
 
@@ -81,7 +83,7 @@ git submodule add https://github.com/mac9sb/<repo>.git tooling/<repo>
 git commit -m "Add <repo> submodule"
 ```
 
-The sites-watcher auto-detects new sites and configures Apache + server-manager.
+The orchestrator daemon auto-detects new sites and configures Apache + process supervision.
 
 ### Updating
 
@@ -96,7 +98,7 @@ git commit -m "Update <name> submodule"
 
 ## Domain Routing
 
-Apache routing is derived entirely from site directory names and the primary domain configured in `utilities/cloudflared/config.yml` (custom domain ingress entries are auto-managed by sites-watcher):
+Apache routing is derived entirely from site directory names and the primary domain configured in `tooling/orchestrator/Sources/OrchestratorCLI/Resources/cloudflared/config.yml` (ingress entries are auto-managed by orchestrator):
 
 ```
 # primary-domain: maclong.dev
@@ -130,7 +132,7 @@ Custom domains need a DNS route to the tunnel; the cloudflared ingress entry is 
    git submodule add https://github.com/mac9sb/cool-app.git sites/cool-app.com
    ```
 
-2. sites-watcher automatically updates `utilities/cloudflared/config.yml` (no manual edits needed).
+2. Orchestrator automatically updates `tooling/orchestrator/Sources/OrchestratorCLI/Resources/cloudflared/config.yml` (no manual edits needed).
 
 3. Route DNS to the tunnel:
 
@@ -138,7 +140,7 @@ Custom domains need a DNS route to the tunnel; the cloudflared ingress entry is 
    cloudflared tunnel route dns maclong cool-app.com
    ```
 
-4. The sites-watcher picks up the change, regenerating Apache config and ingress entries automatically.
+4. Orchestrator picks up the change, regenerating Apache config and ingress entries automatically.
 
 ### Renaming / Changing Domains
 
@@ -149,13 +151,13 @@ git commit -m "Move to new-name.com"
 
 ## Cloudflare Tunnel
 
-The tunnel config at `utilities/cloudflared/config.yml` is version-controlled (no credentials) and rendered to `~/.cloudflared/config.yml` during setup. It contains:
+The tunnel config at `tooling/orchestrator/Sources/OrchestratorCLI/Resources/cloudflared/config.yml` is version-controlled (no credentials) and rendered to `~/.cloudflared/config.yml` during setup. It contains:
 
 - The **primary domain** as a parseable comment (`# primary-domain: maclong.dev`)
-- **Ingress rules** for the primary domain, wildcard subdomains, and any custom domains
+- **Ingress rules** for the primary domain and all discovered site hostnames
 - All ingress rules forward to Apache on `:80` — Apache handles per-site routing via VirtualHosts
 
-See the comments in `utilities/cloudflared/config.yml` for full details.
+See the comments in `tooling/orchestrator/Sources/OrchestratorCLI/Resources/cloudflared/config.yml` for full details.
 
 ### First-Time Setup
 
@@ -190,7 +192,7 @@ cloudflared tunnel route dns -f maclong "*.maclong.dev"
 
 A daily backup script runs at 03:00 via launchd, snapshots all SQLite databases, packages them into tarballs, and uploads to Cloudflare R2 using pure `curl` + S3v4 signing (no AWS CLI needed). Local backups are retained for 7 days.
 
-See `utilities/scripts/backup.sh` for the full process. Copy `.env.example` to `.env.local` and fill in your R2 credentials:
+See `tooling/orchestrator/Sources/OrchestratorCLI/Resources/scripts/backup.sh` for the full process. Copy `.env.example` to `.env.local` and fill in your R2 credentials:
 
 ```sh
 cp .env.example .env.local
@@ -206,11 +208,11 @@ sudo apachectl configtest && sudo apachectl restart
 launchctl list | grep mac9sb
 
 # Restart a specific server
-~/Developer/utilities/scripts/restart-server.sh <server-name>
+orchestrator restart <server-name>
 
 # Logs
 tail -f ~/Library/Logs/com.mac9sb/<site>.log
-tail -f ~/Library/Logs/com.mac9sb/server-manager.log
+tail -f ~/Library/Logs/com.mac9sb/orchestrator-*.log
 tail -f /var/log/apache2/sites/<site>-error.log
 
 # Submodules
@@ -218,7 +220,7 @@ git submodule status
 git submodule update --remote --merge
 
 # Manual backup
-~/Developer/utilities/scripts/backup.sh
+~/Developer/tooling/orchestrator/Sources/OrchestratorCLI/Resources/scripts/backup.sh
 
 # Rebuild a site
 cd ~/Developer/sites/<name> && swift build -c release
