@@ -1,10 +1,8 @@
-tap "anomalyco/tap"
-
 brew "cloudflared"
 brew "gh"
 brew "mas"
-brew "opencode"
 
+cask "copilot-cli"
 cask "crossover"
 cask "steam"
 
