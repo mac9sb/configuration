@@ -3,7 +3,7 @@ set -e
 
 # =============================================================================
 #  macOS Developer Environment Teardown
-#  Author: Mac (maclong9)
+#  Author: Mac (mac9sb)
 #
 #  This script reverses the setup performed by setup.sh:
 #    - Stops orchestrator and unloads legacy launchd agents

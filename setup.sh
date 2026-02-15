@@ -3,7 +3,7 @@ set -e
 
 # =============================================================================
 #  macOS Developer Environment Setup
-#  Author: Mac (maclong9)
+#  Author: Mac (mac9sb)
 #
 #  This script sets up a complete development environment including:
 #    - Touch ID for sudo
@@ -28,7 +28,7 @@ set -e
 # =============================================================================
 
 GITHUB_USER="mac9sb"
-GIT_EMAIL="maclong9@icloud.com"
+GIT_EMAIL="mac9sb@icloud.com"
 
 PHASE=""
 PLAN_MODE=0
@@ -64,6 +64,10 @@ if [ "$REAL_USER" = "root" ]; then
     REAL_USER="$(/usr/bin/logname 2>/dev/null || /usr/bin/stat -f%Su /dev/console 2>/dev/null || echo root)"
 fi
 REAL_HOME="$(eval echo "~${REAL_USER}")"
+if [ "$REAL_USER" = "root" ] && [ -n "${HOME:-}" ] && [ "$HOME" != "$REAL_HOME" ] && [ -d "$HOME" ]; then
+    REAL_HOME="$HOME"
+    REAL_USER="$(/usr/bin/stat -f%Su "$REAL_HOME" 2>/dev/null || echo "$REAL_USER")"
+fi
 REAL_GROUP="$(id -gn "${REAL_USER}" 2>/dev/null || echo staff)"
 
 PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
