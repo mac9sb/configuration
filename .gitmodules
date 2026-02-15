@@ -1,9 +1,9 @@
 [submodule "tooling/list"]
 	path = tooling/list
 	url = https://github.com/mac9sb/list.git
-[submodule "tooling/web-ui"]
-	path = tooling/web-ui
-	url = https://github.com/mac9sb/web-ui.git
+[submodule "tooling/axiom"]
+	path = tooling/axiom
+	url = https://github.com/mac9sb/axiom.git
 [submodule "tooling/orchestrator"]
 	path = tooling/orchestrator
 	url = https://github.com/mac9sb/orchestrator.git
