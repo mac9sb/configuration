@@ -448,6 +448,7 @@ task "Homebrew bundle" \
 
 info "Initializing git submodules & installing hooks"
 mkdir -p "$SITES_DIR" "$TOOLING_DIR" "$STATE_DIR" "$LOG_DIR" "$LAUNCH_AGENTS_DIR"
+chown -R "${REAL_USER}:${REAL_GROUP}" "$STATE_DIR" "$LOG_DIR" 2>/dev/null || true
 
 cd "$DEV_DIR"
 
@@ -599,7 +600,7 @@ chown -R "${REAL_USER}:${REAL_GROUP}" "$HOME/.cloudflared"
 # Check if credentials are already in place
 if [ -f "$HOME/.cloudflared/maclong.json" ]; then
     success "  Tunnel credentials found"
-    
+
     # Configure DNS routes for the tunnel
     if command_exists cloudflared; then
         # Extract primary domain from config
@@ -618,13 +619,13 @@ if [ -f "$HOME/.cloudflared/maclong.json" ]; then
             else
                 true
             fi
-            
+
             # Add route for each custom domain site (non-subdomain sites)
             for _dir in "$SITES_DIR"/*/; do
                 [ ! -d "$_dir" ] && continue
                 _name="$(basename "$_dir")"
                 _domain="$(resolve_domain "$_name")" || continue
-                
+
                 # Skip if it's a subdomain (covered by wildcard)
                 if ! echo "$_domain" | grep -q "\.${_primary_domain}\$"; then
                     if cloudflared tunnel route dns -f maclong "$_domain" 2>/dev/null; then
