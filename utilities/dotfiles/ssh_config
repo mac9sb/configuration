@@ -1,3 +1,6 @@
+Host dav.internal
+  HostName dav.internal
+
 Host *
   AddKeysToAgent yes
   UseKeychain yes
