@@ -316,7 +316,7 @@ apply_orchestrator_daemon() {
         warn "  orchestrator binary not found"
         return 1
     fi
-    sudo -E HOME="$REAL_HOME" "$_bin_path/orchestrator" install-daemon --replace-legacy
+    sudo -E HOME="$REAL_HOME" "$_bin_path/orchestrator" install-daemon
 }
 
 check_apache_restart() {
