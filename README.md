@@ -37,6 +37,24 @@ cp .env.example .env.local   # fill in R2 credentials
 > Setup uses the repo `Brewfile` (Homebrew + mas) to install tools, casks, and App Store apps.
 > Sign into the App Store first if you want MAS installs to succeed.
 
+## Recent Features
+
+### Setup and Configuration
+- Moved runtime resources into orchestrator package and switched to install-daemon workflow
+- Refactored setup phases and Homebrew bundle for better organization
+- Hardened setup and backup scripts with improved error handling
+- Hardened templates and config generation for reliability
+- Fixed cloudflared install architecture compatibility
+
+### Maintenance and Cleanup
+- Removed unused formulae and casks from Brewfile
+- Cleaned up various files and repository structure
+- Added CI testing for backups functionality
+
+### Bug Fixes
+- Fixed server-manager to pass --port as CLI argument to server binaries
+- Fixed touch binary after rebuild to guarantee mtime change in CI
+
 ## Architecture
 
 ```

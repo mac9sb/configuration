@@ -13,3 +13,6 @@
 [submodule "sites/maclong.dev"]
 	path = sites/maclong.dev
 	url = https://github.com/mac9sb/portfolio.git
+[submodule "embedded/pocket-pulse"]
+	path = embedded/pocket-pulse
+	url = https://github.com/mac9sb/pocket-pulse.git
