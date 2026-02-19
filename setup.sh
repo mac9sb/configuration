@@ -397,6 +397,45 @@ if [ -f "$_ssh_config_src" ]; then
     fi
 fi
 
+# Zed editor configuration
+_zed_src="$DOTFILES_DIR/zed"
+_zed_dest="$HOME/.config/zed"
+if [ -d "$_zed_src" ]; then
+    mkdir -p "$HOME/.config"
+    if [ -L "$_zed_dest" ] && [ "$(readlink "$_zed_dest")" = "$_zed_src" ]; then
+        success "  ~/.config/zed already symlinked"
+    else
+        if [ -e "$_zed_dest" ] && [ ! -L "$_zed_dest" ]; then
+            mv "$_zed_dest" "${_zed_dest}.bak.$(date +%Y%m%d%H%M%S)"
+            warn "  Backed up existing ~/.config/zed"
+        fi
+        ln -sf "$_zed_src" "$_zed_dest"
+        success "  ~/.config/zed -> $_zed_src"
+    fi
+fi
+
+# Pi configuration (themes, skills, extensions, settings)
+_pi_src="$DOTFILES_DIR/pi/agent"
+_pi_dest="$HOME/.pi/agent"
+if [ -d "$_pi_src" ]; then
+    mkdir -p "$_pi_dest"
+    for _item in AGENTS.md settings.json extensions skills themes; do
+        _item_src="$_pi_src/$_item"
+        [ ! -e "$_item_src" ] && continue
+        _item_dest="$_pi_dest/$_item"
+        if [ -L "$_item_dest" ] && [ "$(readlink "$_item_dest")" = "$_item_src" ]; then
+            success "  $_item_dest already symlinked"
+        else
+            if [ -e "$_item_dest" ] && [ ! -L "$_item_dest" ]; then
+                mv "$_item_dest" "${_item_dest}.bak.$(date +%Y%m%d%H%M%S)"
+                warn "  Backed up existing $_item_dest"
+            fi
+            ln -sf "$_item_src" "$_item_dest"
+            success "  $_item_dest -> $_item_src"
+        fi
+    done
+fi
+
 # =============================================================================
 #  Step 3 — SSH key
 # =============================================================================
