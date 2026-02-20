@@ -62,7 +62,7 @@ function getAgentDir(): string {
 		if (envDir.startsWith("~/")) return path.join(os.homedir(), envDir.slice(2));
 		return envDir;
 	}
-	return path.join(os.homedir(), ".pi", "agent");
+	return path.join(os.homedir(), ".opencode", "agent");
 }
 
 async function readFileIfExists(filePath: string): Promise<{ path: string; content: string; bytes: number } | null> {

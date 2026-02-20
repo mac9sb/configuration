@@ -20,7 +20,7 @@
  * - `/review custom "check for security issues"` - custom instructions
  *
  * Project-specific review guidelines:
- * - If a REVIEW_GUIDELINES.md file exists in the same directory as .pi,
+ * - If a REVIEW_GUIDELINES.md file exists in the same directory as .opencode,
  *   its contents are appended to the review prompt.
  *
  * Note: PR review requires a clean working tree (no uncommitted changes to tracked files).
@@ -194,7 +194,7 @@ async function loadProjectReviewGuidelines(cwd: string): Promise<string | null> 
 	let currentDir = path.resolve(cwd);
 
 	while (true) {
-		const piDir = path.join(currentDir, ".pi");
+		const piDir = path.join(currentDir, ".opencode");
 		const guidelinesPath = path.join(currentDir, "REVIEW_GUIDELINES.md");
 
 		const piStats = await fs.stat(piDir).catch(() => null);

@@ -3,7 +3,7 @@
  *
  * Enables inter-session communication via Unix domain sockets.  When enabled with
  * the `--session-control` flag, each pi session creates a control socket at
- * `~/.pi/session-control/<session-id>.sock` that accepts JSON-RPC commands.
+ * `~/.opencode/session-control/<session-id>.sock` that accepts JSON-RPC commands.
  *
  * Features:
  * - Send messages to other running pi sessions (steer or follow-up mode)
@@ -59,7 +59,7 @@ const CONTROL_SEND_MESSAGE_FLAG = "send-session-message";
 const CONTROL_SEND_MODE_FLAG = "send-session-mode";
 const CONTROL_SEND_WAIT_FLAG = "send-session-wait";
 const CONTROL_SEND_INCLUDE_SENDER_FLAG = "send-session-include-sender-info";
-const CONTROL_DIR = path.join(os.homedir(), ".pi", "session-control");
+const CONTROL_DIR = path.join(os.homedir(), ".opencode", "session-control");
 const SOCKET_SUFFIX = ".sock";
 const SESSION_MESSAGE_TYPE = "session-message";
 const SENDER_INFO_PATTERN = /<sender_info>[\s\S]*?<\/sender_info>/g;

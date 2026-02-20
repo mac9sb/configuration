@@ -1,3 +1,6 @@
-export PATH="$(printf '%s:' ~/Developer/tooling/*/.build/*/release | sed 's/:$//'):/opt/homebrew/bin:$PATH"
+export PATH="$(printf '%s:' $HOME/Developer/tooling/*/.build/*/release/ | sed 's/:$//'):/opt/homebrew/bin/:$HOME/.wokwi/bin/:$HOME/$PATH"
 alias ls="sls -clit --human-readable"
-setopt auto_cd
+setopt auto_cd interactivecomments
+. "/Users/mac/.swiftly/env.sh"
+eval "$(starship init zsh)"
+export PATH="/Users/mac/bin:$PATH"

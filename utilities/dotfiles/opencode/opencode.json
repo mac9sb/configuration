@@ -1,0 +1,5 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "theme": "rose-pine",
+  "model": "openai-codex/gpt-5.3-codex"
+}

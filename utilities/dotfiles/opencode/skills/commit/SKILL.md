@@ -15,8 +15,8 @@ Create a git commit for the current changes using Apple-style commit subjects (a
 - Do NOT use Conventional Commits prefixes like `feat:`, `fix:`, or `chore:`.
 
 Examples:
-- `Add rose pine themes for pi`
-- `Update Pi setup symlink handling`
+- `Add rose pine themes for opencode`
+- `Update opencode setup symlink handling`
 - `Improve web browser skill scripts`
 
 ## Notes

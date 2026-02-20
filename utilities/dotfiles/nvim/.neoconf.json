@@ -1,0 +1,12 @@
+{
+  "neoconf": {
+    "plugins": {
+      "nvim-lspconfig": {
+        "enabled": true
+      },
+      "null-ls": {
+        "enabled": true
+      }
+    }
+  }
+}

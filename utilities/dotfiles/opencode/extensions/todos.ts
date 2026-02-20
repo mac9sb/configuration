@@ -1,9 +1,9 @@
 /**
- * This extension stores todo items as files under <todo-dir> (defaults to .pi/todos,
- * or the path in PI_TODO_PATH).  Each todo is a standalone markdown file named
+ * This extension stores todo items as files under <todo-dir> (defaults to .opencode/todos,
+ * or the path in OPENTODO_PATH).  Each todo is a standalone markdown file named
  * <id>.md and an optional <id>.lock file is used while a session is editing it.
  *
- * File format in .pi/todos:
+ * File format in .opencode/todos:
  * - The file starts with a JSON object (not YAML) containing the front matter:
  *   { id, title, tags, status, created_at, assigned_to_session }
  * - After the JSON block comes optional markdown body text separated by a blank line.
@@ -54,8 +54,8 @@ import {
 	visibleWidth,
 } from "@mariozechner/pi-tui";
 
-const TODO_DIR_NAME = ".pi/todos";
-const TODO_PATH_ENV = "PI_TODO_PATH";
+const TODO_DIR_NAME = ".opencode/todos";
+const TODO_PATH_ENV = "OPENTODO_PATH";
 const TODO_SETTINGS_NAME = "settings.json";
 const TODO_ID_PREFIX = "TODO-";
 const TODO_ID_PATTERN = /^[a-f0-9]{8}$/i;

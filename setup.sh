@@ -414,6 +414,23 @@ if [ -d "$_zed_src" ]; then
     fi
 fi
 
+# Neovim configuration
+_nvim_src="$DOTFILES_DIR/nvim"
+_nvim_dest="$HOME/.config/nvim"
+if [ -d "$_nvim_src" ]; then
+    mkdir -p "$HOME/.config"
+    if [ -L "$_nvim_dest" ] && [ "$(readlink "$_nvim_dest")" = "$_nvim_src" ]; then
+        success "  ~/.config/nvim already symlinked"
+    else
+        if [ -e "$_nvim_dest" ] && [ ! -L "$_nvim_dest" ]; then
+            mv "$_nvim_dest" "${_nvim_dest}.bak.$(date +%Y%m%d%H%M%S)"
+            warn "  Backed up existing ~/.config/nvim"
+        fi
+        ln -sf "$_nvim_src" "$_nvim_dest"
+        success "  ~/.config/nvim -> $_nvim_src"
+    fi
+fi
+
 # Pi configuration (themes, skills, extensions, settings)
 _pi_src="$DOTFILES_DIR/pi/agent"
 _pi_dest="$HOME/.pi/agent"

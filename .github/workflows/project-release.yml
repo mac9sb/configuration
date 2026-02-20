@@ -1,0 +1,245 @@
+name: Project Release
+
+# Create releases from tags and optionally build & attach CLI binaries for multiple platforms/archs.
+# - Trigger: push tags `v*` and manual dispatch
+# - Configurable via workflow_dispatch inputs (overrides defaults)
+#
+# Usage notes:
+# - For Swift CLIs, set `build_command` default or override with the appropriate build command.
+# - Set `binary_name` to the name of the produced executable (used for naming artifacts).
+# - Set `artifact_glob` to locate built artifact files (relative to repo root).
+# - Set `build_binaries: false` for repos that produce no binaries but still want release notes and a release.
+#
+# This workflow:
+# 1. Creates a GitHub release for the pushed tag (GitHub will generate release notes from PRs since the previous tag).
+# 2. If enabled, runs matrix builds for Linux/macOS x86_64 & arm64 and uploads those artifacts to the release.
+# 3. Keeps the release creation and artifact upload steps linked so artifacts are attached to the correct release.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      project_name:
+        description: "Human-friendly project name used in artifact names (defaults to repo name)"
+        required: false
+        default: ""
+      build_binaries:
+        description: "Whether to build and attach binary artifacts (true/false)"
+        required: false
+        default: "true"
+      binary_name:
+        description: "Name of the produced CLI binary (used for packaging). Leave empty if not applicable."
+        required: false
+        default: ""
+      artifact_glob:
+        description: "Glob to collect produced artifacts (e.g. .build/release/**)"
+        required: false
+        default: ".build/release/**"
+      build_command:
+        description: 'Command to run to build the binary (without the binary name). Example: "swift build -c release --product"'
+        required: false
+        default: "swift build -c release --product"
+      prerelease:
+        description: "Whether to mark the created release as a prerelease (true/false)"
+        required: false
+        default: "false"
+      draft:
+        description: "Whether to publish the release as a draft (true/false)"
+        required: false
+        default: "false"
+
+# Minimal permissions needed to create releases and upload assets
+permissions:
+  contents: write
+
+env:
+  # Defaults used when workflow_dispatch inputs are not provided (e.g. when triggered by tag push).
+  BUILD_BINARIES: ${{ github.event.inputs.build_binaries || 'true' }}
+  PROJECT_NAME: ${{ github.event.inputs.project_name || github.repository }}
+  BINARY_NAME: ${{ github.event.inputs.binary_name || '' }}
+  ARTIFACT_GLOB: ${{ github.event.inputs.artifact_glob || '.build/release/**' }}
+  BUILD_COMMAND: ${{ github.event.inputs.build_command || 'swift build -c release --product' }}
+  PRERELEASE: ${{ github.event.inputs.prerelease || 'false' }}
+  DRAFT: ${{ github.event.inputs.draft || 'false' }}
+
+jobs:
+  # Create the release first. We ask GitHub to auto-generate release notes from the previous release.
+  create_release:
+    name: Create Release (notes from previous release)
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      release_id: ${{ steps.create_release.outputs.id }}
+      tag_name: ${{ steps.set_tag.outputs.RELEASE_TAG }}
+    steps:
+      - name: Checkout (fetch tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine tag name
+        id: set_tag
+        run: |
+          # On push tag events GITHUB_REF is like refs/tags/v1.2.3
+          if [ -n "${GITHUB_REF#refs/tags/}" ] && [ "${GITHUB_REF}" != "" ]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          elif [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            echo "Cannot determine tag from GITHUB_REF (${GITHUB_REF})"
+            exit 1
+          fi
+          echo "Determined tag: $TAG"
+          echo "RELEASE_TAG=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub release (generate notes from previous release)
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ steps.set_tag.outputs.RELEASE_TAG }}
+          release_name: ${{ steps.set_tag.outputs.RELEASE_TAG }}
+          body: "" # empty body -> allow GitHub to generate notes
+          generate_release_notes: true
+          draft: ${{ env.DRAFT }}
+          prerelease: ${{ env.PRERELEASE }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Build matrix: runs only when BUILD_BINARIES is true.
+  # Each matrix job will build the binary, compress artifacts and upload them to the release created above.
+  build_and_attach:
+    name: Build & Attach Artifacts
+    needs: create_release
+    runs-on: ${{ matrix.os }}
+    if: ${{ env.BUILD_BINARIES == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            short_os: linux
+            arch: x86_64
+          - os: ubuntu-latest
+            short_os: linux
+            arch: arm64
+          - os: macos-latest
+            short_os: macos
+            arch: x86_64
+          - os: macos-latest
+            short_os: macos
+            arch: arm64
+
+    # Allow bigger timeouts for cross-platform builds
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout (fetch all history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Print runner info
+        run: |
+          echo "Runner: $RUNNER_OS, Matrix OS: ${{ matrix.os }}, arch: ${{ matrix.arch }}"
+          uname -a || true
+          swift --version || true
+
+      - name: Prepare build environment notes
+        run: |
+          echo "Project: $PROJECT_NAME"
+          echo "Binary name: $BINARY_NAME"
+          echo "Build command base: $BUILD_COMMAND"
+          echo "Artifact glob: $ARTIFACT_GLOB"
+
+      - name: Execute build
+        shell: bash
+        run: |
+          set -eo pipefail
+
+          if [ "${BUILD_BINARIES}" != "true" ]; then
+            echo "BUILD_BINARIES not enabled; skipping build."
+            exit 0
+          fi
+
+          if [ -z "${BINARY_NAME}" ]; then
+            echo "Warning: BINARY_NAME is empty. BUILD_COMMAND will need to produce artifacts specified by ARTIFACT_GLOB."
+          fi
+
+          # Optionally allow an arch-specific setup step (user can adapt this action to install toolchains).
+          echo "Running build command: ${BUILD_COMMAND} ${BINARY_NAME}"
+          # Expand the build command and append binary name if provided
+          if [ -n "${BINARY_NAME}" ]; then
+            eval "${BUILD_COMMAND} ${BINARY_NAME}"
+          else
+            eval "${BUILD_COMMAND}"
+          fi
+
+          # Collect artifacts into a deterministic folder
+          mkdir -p release-artifacts
+          # Use a simple copy approach; allow ARTIFACT_GLOB to be a shell glob
+          shopt -s globstar || true
+          MATCHES=( ${ARTIFACT_GLOB} )
+          if [ ${#MATCHES[@]} -eq 0 ]; then
+            echo "No artifacts matched glob '${ARTIFACT_GLOB}'. Listing build dirs for debugging:"
+            ls -la || true
+          else
+            for path in "${MATCHES[@]}"; do
+              # Avoid copying directories named '.' etc.
+              if [ -e "${path}" ]; then
+                cp -R "${path}" release-artifacts/ || true
+              fi
+            done
+          fi
+
+          # Create a tarball for the artifacts for this runner/arch so we attach a single file
+          ART_NAME="${PROJECT_NAME}-${{ matrix.short_os }}-${{ matrix.arch }}"
+          if [ -n "${BINARY_NAME}" ]; then
+            ART_NAME="${ART_NAME}-${BINARY_NAME}"
+          fi
+          TAR_PATH="${ART_NAME}.tar.gz"
+          tar -czf "${TAR_PATH}" -C release-artifacts . || true
+          echo "Produced tarball: ${TAR_PATH}"
+          ls -la "${TAR_PATH}" || true
+
+      - name: Upload artifact to GitHub Release
+        # This step attaches the tarball to the release created in create_release job.
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
+          asset_path: ${{ github.workspace }}/${{ github.event.inputs.project_name || env.PROJECT_NAME }}-${{ matrix.short_os }}-${{ matrix.arch }}${{ env.BINARY_NAME && format('-{0}', env.BINARY_NAME) || '' }}.tar.gz
+          asset_name: ${{ github.event.inputs.project_name || env.PROJECT_NAME }}-${{ matrix.short_os }}-${{ matrix.arch }}${{ env.BINARY_NAME && format('-{0}', env.BINARY_NAME) || '' }}.tar.gz
+          asset_content_type: application/gzip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload raw build artifacts (backup)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-artifacts-${{ matrix.short_os }}-${{ matrix.arch }}-${{ env.BINARY_NAME }}
+          path: release-artifacts/
+          retention-days: 7
+
+  # Optional final step: annotate release with build status summary (runs after all build jobs)
+  summarize:
+    name: Release Summary
+    runs-on: ubuntu-latest
+    needs: [create_release, build_and_attach]
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Print release & job summary
+        run: |
+          echo "Release created for tag: ${{ needs.create_release.outputs.tag_name }}"
+          echo "Release ID: ${{ needs.create_release.outputs.release_id }}"
+          echo "Upload URL: ${{ needs.create_release.outputs.upload_url }}"
+          echo "Build binaries enabled: ${BUILD_BINARIES}"
+          echo "If binaries were built, they should be attached to the release above."
+
+      - name: Post confirmation comment on PR (optional)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          echo "Manual dispatch run; no PR comment created by default."

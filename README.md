@@ -2,6 +2,10 @@
 
 Personal macOS development environment — manages sites, tooling, and infrastructure as a single repository with git submodules.
 
+## Todo
+
+- [ ] Look into creating cron jobs where codex will analyze repo and submodules for clean up tasks and create PR's
+
 ## Structure
 
 ```
