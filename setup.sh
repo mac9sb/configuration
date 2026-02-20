@@ -453,6 +453,16 @@ if [ -d "$_pi_src" ]; then
     done
 fi
 
+# Codex AGENTS.md
+_info "Copying AGENTS.md to ~/.codex"
+mkdir -p "$HOME/.codex"
+if [ -f "$DOTFILES_DIR/AGENTS.md" ]; then
+    cp "$DOTFILES_DIR/AGENTS.md" "$HOME/.codex/AGENTS.md"
+    success "  ~/.codex/AGENTS.md"
+else
+    warn "  AGENTS.md not found at $DOTFILES_DIR/AGENTS.md"
+fi
+
 # =============================================================================
 #  Step 3 — SSH key
 # =============================================================================

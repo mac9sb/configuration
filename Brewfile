@@ -8,6 +8,7 @@ brew "starship"
 brew "swiftly"
 brew "typst"
 
+cask "codex"
 cask "crossover"
 cask "ghostty"
 cask "steam"
