@@ -1,104 +1,139 @@
-Below is the regenerated, canonical ecosystem PRD — rewritten to incorporate all decisions made so far, including:
-	•	Stage = hosting platform
-	•	Score = static-first Swift framework
-	•	Auth/UI/Content = Score targets
-	•	Hybrid hosting (static default, runtime additive)
-	•	Swift-first → Proto benefits
-	•	SQLite + NIO memory store
-	•	GitHub integration
-	•	Asset optimization
-	•	Stripe + AI integration
-	•	Enterprise directory discipline
-	•	No monolithic files
-	•	Noora CLI
-	•	Explicit routing via Application
-	•	Tailwind-grade documentation expectations
-	•	Val.town–style Swift serverless playground
-	•	WASM editor extension built atop ScoreUI editor
+Below is the updated PLAN.md reflecting everything we’ve decided — including:
+	•	✅ Static/Runtime automatic by default
+	•	✅ Stage owns dev/serve lifecycle
+	•	✅ Score remains generic Swift framework (not tied to Stage)
+	•	✅ Stage hosts generic Swift workloads
+	•	✅ Hybrid hosting philosophy clarified
+	•	✅ Swift-first → Proto benefits
+	•	✅ Serverless playground
+	•	✅ Enterprise directory rules
+	•	✅ Noora CLI
+	•	✅ Score targets consolidated
+	•	✅ Automatic asset + image optimization
+	•	✅ GitHub integration
+	•	✅ Explicit Application builder
+	•	✅ PRD-first development rule with blank syntax sections
 
-This document is intended to live as:
+This is written as a single ecosystem source-of-truth artifact.
 
-platform/ECOSYSTEM_PRD.md
+You can drop this directly as:
 
-and act as the source-of-truth ecosystem design.
+PLAN.md
 
-Every module begins life with a PRD.md containing blank syntax sections for you to define final DSL ergonomics later.
+at repo root.
 
 ⸻
 
-Allegro Ecosystem — Master Product Requirements Document
+Allegro Ecosystem — PLAN.md
 
-0. Purpose
+(Ecosystem Product & Architecture Plan)
 
-Allegro is a vertically integrated Swift-native web ecosystem enabling developers to:
-	•	Write everything in Swift
-	•	Deploy anywhere (static hosts, custom servers, or Stage hosting)
-	•	Gain benefits of external ecosystems (Protobuf, AI tooling, payments, serverless)
-	•	Maintain strict runtime parity across environments
+⸻
 
-The ecosystem consists of:
+1. Mission
 
-Layer	Role
-Score	Static-first web framework
+Allegro enables developers to:
+
+Write everything in Swift and deploy anywhere — static hosts, custom servers, or Stage hosting — while gaining modern platform capabilities normally tied to other ecosystems.
+
+The system consists of:
+
+Component	Role
+Score	Static-first Swift web framework
 Stage	Hosting + deployment platform
-Libretto	Dogfood publishing platform
+Libretto	First-party dogfood application
 
 
 ⸻
 
-1. Core Philosophy
-
-1.1 Static First, Runtime Optional
-
-Score must always allow:
-
-Swift → Static Site → Deploy Anywhere
-
-Runtime is additive:
-
-Swift → Runtime Binary → SSR + APIs
-
-Stage hosts both seamlessly.
+2. Core Principles
 
 ⸻
 
-1.2 Hybrid Hosting Model (Non-Negotiable)
+2.1 Static + Runtime Are Automatic
 
-Stage is hybrid hosting:
-	•	Static hosting enabled by default
-	•	Runtime activated only when required
+Developers do not choose static vs runtime.
+
+Score determines automatically:
+
+Feature Used	Result
+Static pages only	Static export
+Auth/API/SSR used	Runtime enabled automatically
+Mixed usage	Hybrid output
+
+The framework decides the minimal runtime required.
+
+This prevents configuration complexity and preserves simplicity.
+
+⸻
+
+2.2 Hybrid Hosting Model
+
+Stage is hybrid hosting.
+	•	Static delivery is default.
+	•	Runtime activates only when required.
+	•	One artifact deploys everywhere.
 
 Static remains the performance baseline.
 
 ⸻
 
-1.3 Swift As Source of Truth
+2.3 Swift Is the Source of Truth
 
 Developers write Swift.
 
-Score generates or integrates:
+Score generates:
+	•	HTML/CSS
 	•	Protobuf schemas
+	•	API contracts
 	•	optimized assets
 	•	runtime manifests
-	•	API contracts
 
-Swift types define system behavior.
+External ecosystem benefits without leaving Swift.
 
 ⸻
 
-1.4 Enterprise Code Organization
+2.4 Stage Owns Hosting Lifecycle
 
-Add to AGENTS.md:
+Stage is responsible for:
 
-Hard Rules
+dev
+serve
+build
+deploy
+logs
+domains
+previews
+
+Score does not own serving.
+
+This guarantees parity.
+
+⸻
+
+2.5 Score Remains Framework-Generic
+
+Stage must be able to host:
+	•	Score apps
+	•	non-Score Swift apps
+	•	generic Swift binaries
+
+Score is not a requirement for Stage.
+
+Stage hosts Swift workloads.
+
+⸻
+
+2.6 Enterprise Directory Discipline
+
+Hard rule:
 	•	No monolithic files.
-	•	Feature-oriented directory layout.
-	•	Public API surfaces remain small.
-	•	Implementation pushed into internal modules.
+	•	Feature-based directories.
+	•	Small public APIs.
 
 Example:
 
-Feature/
+Posts/
   Pages/
   API/
   Components/
@@ -111,7 +146,7 @@ Feature/
 
 ⸻
 
-2. Repository Structure
+3. Repository Layout
 
 apps/
 web/
@@ -125,11 +160,13 @@ embedded/
 
 ⸻
 
-3. Score — Framework PRD (Overview)
+4. Score — Framework
 
 Score is a static-first Swift web framework.
 
-Targets (single repo)
+⸻
+
+4.1 Targets (single repository)
 
 ScoreCore
 ScoreHTML
@@ -144,31 +181,34 @@ ScoreAssets
 ScorePayments
 ScoreAI
 
-NOT separate repositories.
+Auth/UI/Content are targets — not separate repos.
 
 ⸻
 
-3.1 Application Model
+4.2 Application Model
 
-Score apps start from:
+All apps begin with:
 
 Application {
-    pages { }
-    api { }
+    pages {
+    }
+
+    api {
+    }
 }
 
 Explicit routing only.
 
-No filesystem discovery as primary mechanism.
+No filesystem discovery as primary system.
 
 ⸻
 
-3.2 Rendering Modes
+4.3 Automatic Rendering Mode
 
-Mode	Output
-Static	HTML/CSS/JS
-Runtime	Swift binary
-Hybrid	Static + runtime
+Score analyzes usage:
+	•	static rendering default
+	•	runtime added when needed
+	•	hybrid produced automatically
 
 Runtime emits BOTH:
 	•	frontend routes
@@ -178,107 +218,99 @@ Single routing truth.
 
 ⸻
 
-3.3 Database Layer (ScoreDB)
+4.4 Database Layer — ScoreDB
 
-Includes:
-
-SQLite Interface
+SQLite
 	•	migrations
 	•	typed queries
 	•	lightweight ORM helpers
-	•	SQL visibility preserved
 
 In-Memory Store (SwiftNIO)
 	•	TTL cache
 	•	sessions
-	•	rate limits
-	•	pub/sub hooks
+	•	rate limiting
+	•	pub/sub
 
 ⸻
 
-3.4 Protobuf REST APIs
-
-APIs:
+4.5 REST APIs with Protobuf
 	•	HTTP REST semantics
-	•	Protobuf request/response bodies
-	•	Swift types generate schema artifacts
+	•	protobuf request/response bodies
+	•	Swift types generate schemas
 
 HTTP remains canonical protocol.
 
 ⸻
 
-3.5 Asset Optimization (ScoreAssets)
+4.6 Assets Pipeline — ScoreAssets
 
 Automatic:
-	•	image resizing
+	•	image optimization
 	•	AVIF/WebP generation
-	•	srcset generation
-	•	asset fingerprinting
+	•	responsive variants
+	•	fingerprinting
 	•	cache headers
 
-Zero-config defaults.
+Zero configuration required.
 
 ⸻
 
-3.6 Styling System
+4.7 Styling System
 
-ScoreCSS must ship with:
+ScoreCSS includes:
 
-Tailwind-level documentation coverage, including:
+Tailwind-level documentation:
 	•	every modifier documented
 	•	examples
 	•	generated CSS output
-	•	accessibility notes
+	•	searchable docs
 
-Docs generated automatically from source definitions.
+Docs generated automatically.
 
 ⸻
 
-3.7 Payments (ScorePayments)
+4.8 Payments — ScorePayments
 
 Built-in Stripe integration:
 	•	subscriptions
-	•	tier gating
+	•	tiers
 	•	webhook verification
-	•	billing middleware
+	•	route gating middleware
 
-Runtime-only feature.
+Runtime feature only.
 
 ⸻
 
-3.8 AI Integration (ScoreAI)
+4.9 AI Integration — ScoreAI
 
-Capabilities:
-	•	provider abstraction via API keys
-	•	webmcp integration
+Provides:
+	•	provider abstraction
+	•	API-key configuration
 	•	embeddings
 	•	tool calling
-	•	structured responses
+	•	webmcp support
 
-Safe defaults required:
-	•	timeout
-	•	retry
-	•	cost visibility
+Safe defaults required.
 
 ⸻
 
-4. Stage — Hosting Platform PRD (Overview)
+5. Stage — Hosting Platform
 
-Stage is a hosting product, not just runtime.
+Stage is a hosting product, not a framework runtime.
 
 ⸻
 
-4.1 Responsibilities
-	•	Host static builds
+5.1 Responsibilities
+	•	Host static output
 	•	Host runtime binaries
-	•	Deploy applications
+	•	Deploy apps
 	•	Provide logs + environments
 	•	Manage domains
 	•	Enable experimentation
 
 ⸻
 
-4.2 Hosting Modes
+5.2 Hosting Modes
 
 Stage Local
 
@@ -296,18 +328,33 @@ Run .stage bundle anywhere.
 
 ⸻
 
-4.3 GitHub Integration
+5.3 Stage Workload Model (Generic Swift)
 
-Stage includes GitHub App:
-	•	repo linking
-	•	automatic builds
-	•	automatic deploys
-	•	deploy previews (future)
-	•	build logs UI
+Stage hosts workloads defined by a manifest.
+
+Inputs supported:
+	•	.stage bundle
+	•	Swift Package
+	•	compiled Swift binary
+
+Stage executes via generic Swift commands internally.
+
+Score simply produces compatible workloads.
 
 ⸻
 
-4.4 Domains
+5.4 GitHub Integration
+
+Stage GitHub App:
+	•	repo linking
+	•	automatic builds
+	•	automatic deploys
+	•	build logs
+	•	deploy previews (future)
+
+⸻
+
+5.5 Domains
 
 Default:
 
@@ -319,14 +366,13 @@ Optional:
 
 ⸻
 
-4.5 CLI
+5.6 CLI (Noora)
 
-Uses Noora for UX.
-
-Goals:
-	•	beautiful output
-	•	clear failures
-	•	actionable next steps
+Stage CLI uses Noora for UX:
+	•	spinners
+	•	tables
+	•	progress indicators
+	•	structured errors
 
 Supports:
 
@@ -334,97 +380,66 @@ stage dev
 stage build
 stage deploy
 stage logs
+stage serve
 
 
 ⸻
 
-4.6 Serverless Playground (Val.town Inspired)
+5.7 Serverless Playground (Swift Val.town Equivalent)
 
-Stage includes a Swift-native experimentation environment.
-
-Concept
-
-Quick spin-up serverless functions written in Swift.
+Stage includes instant experimentation.
 
 Features:
-	•	instant execution
-	•	ephemeral environments
-	•	zero project setup
+	•	write Swift functions instantly
+	•	zero setup
+	•	ephemeral execution
 	•	shareable URLs
-
-Equivalent philosophy to:
-	•	val.town
-	•	Deno Deploy playground
-
-But entirely Swift-based.
 
 ⸻
 
-4.7 Playground Editor
+Playground Editor
 
 Built using:
-	•	ScoreUI Text Editor
+	•	ScoreUI text editor
 	•	WASM extension bundle providing:
-	•	syntax highlighting
+	•	highlighting
 	•	formatting
 	•	completions
 	•	diagnostics
-	•	symbol listing
+	•	symbol navigation
 
-Runs fully in browser.
-
-⸻
-
-4.8 Automatic Asset Handling
-
-Stage automatically:
-	•	caches optimized assets
-	•	serves variants
-	•	respects ScoreAssets manifests
+Runs entirely in browser.
 
 ⸻
 
-5. Libretto — Platform Dogfood
+6. Libretto — Dogfood Platform
 
-Libretto validates ecosystem coherence.
+Validates ecosystem coherence.
 
 Features:
 	•	publishing workflow
-	•	discovery feed (“posts like your interests”)
-	•	embeddings-based similarity
-	•	AI assistant
-	•	basic free tier
-	•	expanded paid tier
+	•	discovery feed (“similar posts”)
+	•	embeddings-based recommendations
+	•	AI assistant (basic free tier)
 
-Uses:
-	•	ScoreUI editor
-	•	ScoreContent
-	•	ScoreAI
-	•	ScorePayments
-	•	Stage hosting
+Uses entire stack.
 
 ⸻
 
-6. Stage vs Score Relationship
-
-Should Stage be built in Score?
-
-Answer: No.
-
-Reason:
-	•	avoids circular dependency
-	•	hosting must exist independently of apps
-
-Correct model:
-
-Stage hosts Score apps
-Stage dashboard MAY use ScoreUI
+7. Stage vs Score Boundary
 
 Stage ≠ Score application.
 
+Correct relationship:
+
+Score builds apps
+Stage hosts apps
+
+Stage dashboard may use ScoreUI components.
+
 ⸻
 
-7. Development Workflow
+8. Development Workflow
 
 bootstrap.sh
 ↓
@@ -432,80 +447,78 @@ stage dev
 ↓
 edit Swift
 ↓
-instant rebuild
+automatic static/runtime decision
 ↓
 deploy via git push or CLI
 
 
 ⸻
 
-8. PRD-First Development Rule
+9. PRD-First Development Rule
 
-Every platform module begins as:
+Every module begins with:
 
 PRD.md
 
-Each PRD must include:
+Each PRD must include blank sections:
 
-## Desired Syntax (Blank)
-[developer fills later]
+## Desired Syntax
+[blank]
 
-## Example Usage (Blank)
+## Example Usage
+[blank]
 
-## DSL Goals (Blank)
+## DSL Goals
+[blank]
 
-## Anti-Goals (Blank)
+## Anti-Goals
+[blank]
 
-Implementation cannot begin until PRD exists.
+Implementation begins only after PRD exists.
 
 ⸻
 
-9. Initial PRDs Required
-
-Create immediately:
+10. Initial PRDs Required
 
 platform/score/PRD.md
-platform/score/Sources/ScoreUI/PRD.md
-platform/score/Sources/ScoreAuth/PRD.md
-platform/score/Sources/ScoreContent/PRD.md
-platform/score/Sources/ScoreDB/PRD.md
-platform/score/Sources/ScoreAssets/PRD.md
-platform/score/Sources/ScorePayments/PRD.md
-platform/score/Sources/ScoreAI/PRD.md
-
+platform/score/Sources/*/PRD.md
 platform/stage/PRD.md
 platform/stage/playground/PRD.md
 
-Each contains blank syntax sections.
 
 ⸻
 
-10. Implementation Order (Reality-Based)
+11. Implementation Order (Reality-Safe)
 	1.	Score static rendering
-	2.	Stage Local static hosting
+	2.	Stage Local hosting
 	3.	Libretto static MVP
-	4.	Runtime binary
-	5.	API + protobuf
-	6.	SQLite + memory store
-	7.	Asset pipeline
-	8.	GitHub deploys
-	9.	Serverless playground
-	10.	Payments
-	11.	AI integration
-	12.	Discovery system
+	4.	Automatic runtime detection
+	5.	Runtime binary
+	6.	Protobuf APIs
+	7.	SQLite + memory store
+	8.	Asset optimization
+	9.	GitHub deploys
+	10.	Playground
+	11.	Payments
+	12.	AI integration
+	13.	Discovery system
 
 ⸻
 
-11. Final Mental Model
+12. Final Mental Model
 
 Score
 
-Write Swift → produce static or runtime web apps.
+Swift framework producing deployable workloads automatically.
 
 Stage
 
-Host, deploy, experiment, and observe those apps.
+Universal Swift hosting platform.
 
 Libretto
 
-Prove the ecosystem works.
+Proof the system works.
+
+⸻
+
+If you want next, the most important architectural lock we can do now is defining the Stage Workload Manifest (stage.yaml) — because once that exists, both Score and future non-Score Swift apps can target Stage without further architectural churn.
