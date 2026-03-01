@@ -3,4 +3,5 @@
 gh
 github-copilot/
 node_modules/
-zed/{prompts/,themes/}
+zed/prompts/
+zed/themes/
