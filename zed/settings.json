@@ -1,6 +1,10 @@
 {
   "agent": {
-    "default_width": 60,
+    "default_width": 420,
+    "commit_message_model": {
+      "provider": "google",
+      "model": "gemini-2.5-flash",
+    },
     "inline_assistant_model": {
       "provider": "google",
       "model": "gemini-2.5-flash",
@@ -13,6 +17,9 @@
     "Ruby": {
       "language_servers": ["!solargraph"],
     },
+  },
+  "minimap": {
+    "show": "always",
   },
   "outline_panel": {
     "dock": "right",
