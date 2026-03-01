@@ -7,7 +7,7 @@
 // from the command palette.
 [
   {
-    "context": "Editor && !VimControl",
+    "context": "!VimControl",
     "bindings": {
       "ctrl-a": "editor::MoveToBeginningOfLine",
       "ctrl-e": "editor::MoveToEndOfLine",

@@ -43,4 +43,11 @@
   },
   "ui_font_size": 12,
   "vim_mode": true,
+  "vim": {
+    "use_system_clipboard": "never",
+  },
+  "which_key": {
+    "enabled": true,
+    "delay_ms": 200,
+  },
 }
