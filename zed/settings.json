@@ -1,0 +1,39 @@
+{
+  "agent": {
+    "default_width": 60,
+    "inline_assistant_model": {
+      "provider": "google",
+      "model": "gemini-2.5-flash",
+    },
+  },
+  "buffer_font_family": "Liga SFMono Nerd Font",
+  "buffer_font_size": 11,
+  "current_line_highlight": "all",
+  "languages": {
+    "Ruby": {
+      "language_servers": ["!solargraph"],
+    },
+  },
+  "outline_panel": {
+    "dock": "right",
+  },
+  "relative_line_numbers": "enabled",
+  "restore_on_startup": "launchpad",
+  "ssh_connections": [
+    {
+      "host": "dav.internal",
+      "projects": [
+        {
+          "paths": ["/nfs/data/mac/data-migration-py"],
+        },
+      ],
+    },
+  ],
+  "theme": {
+    "mode": "system",
+    "light": "Dayfox - blurred",
+    "dark": "Nightfox - blurred",
+  },
+  "ui_font_size": 12,
+  "vim_mode": true,
+}

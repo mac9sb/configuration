@@ -1,0 +1,38 @@
+" Core
+let g:is_posix = 1
+let g:netrw_liststyle = 3
+syntax enable
+
+" File I/O / Reloading
+set autoread
+
+" Editing
+set expandtab
+set shiftwidth=2
+set smartindent
+set tabstop=2
+
+" Search
+set hlsearch
+set ignorecase
+set incsearch
+set re=0
+
+" UI
+set nowrap
+set number
+set relativenumber
+set signcolumn=no
+
+" Completion 
+set path+=**
+set wildignore+=*.o,*.obj,.git,*.pyc,*.swp,DS_Store,.build
+set wildmenu
+set wildmode=longest:full,full
+
+" Filetype Behavior
+autocmd FileType markdown setlocal wrap
+
+" Clear search highlight when pressing Escape
+nnoremap <silent> <C-[> :nohlsearch<CR><C-[>
+nnoremap <silent> <Esc> :nohlsearch<CR><Esc>
