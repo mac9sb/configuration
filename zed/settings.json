@@ -1,6 +1,9 @@
 {
+  "git_panel": {
+    "default_width": 320,
+  },
   "agent": {
-    "default_width": 420,
+    "default_width": 340,
     "commit_message_model": {
       "provider": "google",
       "model": "gemini-2.5-flash",
@@ -19,7 +22,7 @@
     },
   },
   "minimap": {
-    "show": "always",
+    "show": "never",
   },
   "outline_panel": {
     "dock": "right",
@@ -41,7 +44,7 @@
     "light": "Dayfox - blurred",
     "dark": "Nightfox - blurred",
   },
-  "ui_font_size": 12,
+  "ui_font_size": 12.5,
   "vim_mode": true,
   "vim": {
     "use_system_clipboard": "never",
