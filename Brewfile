@@ -1,6 +1,5 @@
 # ——— Formulae  ———
 brew "deno"
-brew "fswatch"
 brew "gh"
 brew "mas"
 brew "mosh"
@@ -8,8 +7,6 @@ brew "starship"
 
 # ——— Casks  ———
 cask "claude-code"
-cask "codex"
-cask "crossover"
 cask "font-sf-mono-nerd-font-ligaturized"
 cask "steam"
 cask "zed"
