@@ -4,6 +4,7 @@ brew "gh"
 brew "mas"
 brew "mosh"
 brew "starship"
+brew "rustup"
 
 # ——— Casks  ———
 cask "claude-code"

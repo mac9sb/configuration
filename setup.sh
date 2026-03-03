@@ -108,6 +108,9 @@ brew_bundle() {
   log "Running: brew bundle"
 
   eval "$(/opt/homebrew/bin/brew shellenv)" && brew bundle
+
+  # Other tooling configuration
+  /opt/homebrew/bin/rustup default stable
 }
 
 # ——— main ———
