@@ -1,3 +1,37 @@
 [character]
-success_symbol = "[λ](bold green)"
-error_symbol = "[λ](bold red)"
+
+[c]
+symbol = " "
+
+[deno]
+symbol = " "
+
+[git_branch]
+symbol = " "
+
+[git_commit]
+tag_symbol = '  '
+
+[golang]
+symbol = " "
+
+[hostname]
+ssh_symbol = " "
+
+[nodejs]
+symbol = " "
+
+[os.symbols]
+Macos = " "
+
+[python]
+symbol = " "
+
+[rust]
+symbol = "󱘗 "
+
+[swift]
+symbol = " "
+
+[zig]
+symbol = " "
