@@ -4,6 +4,5 @@
 
 ```sh
 git clone https://github.com/mac9sb/config.git ~/.config
-cd ~/.config
-./setup.sh
+~/.config/scripts/setup.sh
 ```

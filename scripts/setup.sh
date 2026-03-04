@@ -1,6 +1,8 @@
 #!/bin/sh
 # ——— Source utils ———
-. ./utils.sh
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONFIG_DIR="$(dirname "$SCRIPT_DIR")"
+. "$SCRIPT_DIR/utils.sh"
 
 [ "$(uname -s)" = "Darwin" ] || die "This script is macOS-only."
 
@@ -34,28 +36,27 @@ install_brew_if_missing() {
 # ——— Step: Brew bundle (can run in bg) ———
 brew_bundle() {
   step "Running brew bundle"
-  cd "$CONFIG_DIR"
-  if [ ! -f "./Brewfile" ]; then
+  if [ ! -f "$CONFIG_DIR/Brewfile" ]; then
     warn "Brewfile not found"
     step_done
     return 0
   fi
-  eval "$(/opt/homebrew/bin/brew shellenv)" && brew bundle
+  eval "$(/opt/homebrew/bin/brew shellenv)" && brew bundle --file="$CONFIG_DIR/Brewfile"
   /opt/homebrew/bin/rustup default stable
   step_done
 }
 
-# ——— Step: Symlink dotfiles ———
-symlink_home_dotfiles() {
-  step "Linking dotfiles from $CONFIG_DIR"
-  for file in "$CONFIG_DIR"/.*; do
-    [ -f "$file" ] || continue
-    filename="$(basename "$file")"
-    case "$filename" in
-      .|..|.git) continue ;;
-      *) ln -sf "$file" "$HOME/$filename" ;;
-    esac
-  done
+# ——— Step: Bootstrap shell environment ———
+bootstrap_zshenv() {
+  step "Bootstrapping ~/.zshenv"
+  target="$HOME/.zshenv"
+  content='export ZDOTDIR="$HOME/.config/zsh"'
+  if [ -f "$target" ] && grep -qF 'ZDOTDIR' "$target" 2>/dev/null; then
+    log "Already configured"
+  else
+    echo "$content" > "$target"
+    log "Created $target"
+  fi
   step_done
 }
 
@@ -86,6 +87,21 @@ enable_touchid_for_sudo() {
   step_done
 }
 
+# ——— Step: macOS defaults ———
+configure_macos_defaults() {
+  step "Configuring macOS defaults"
+
+  # Three-finger drag
+  defaults write com.apple.AppleMultitouchTrackpad TrackpadThreeFingerDrag -bool true
+  defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadThreeFingerDrag -bool true
+
+  # Caps Lock → Control (built-in keyboard, vendor 0, product 0)
+  hidutil property --set '{"UserKeyMapping":[{"HIDKeyboardModifierMappingSrc":0x700000039,"HIDKeyboardModifierMappingDst":0x7000000E0}]}' >/dev/null
+
+  log "Three-finger drag and Caps Lock → Control configured"
+  step_done
+}
+
 # ——— Main sequence ———
 log "Starting macOS setup"
 
@@ -97,8 +113,9 @@ install_brew_if_missing
 parallel_step "Brew bundle" brew_bundle
 
 # Sequential, independent steps
-symlink_home_dotfiles
+bootstrap_zshenv
 enable_touchid_for_sudo
+configure_macos_defaults
 
 # Wait for brew_bundle to finish
 wait_parallel_steps

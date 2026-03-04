@@ -5,6 +5,10 @@ brew "mas"
 brew "mosh"
 brew "starship"
 brew "rustup"
+brew "zsh-autocomplete"
+brew "zsh-autosuggestions"
+brew "zsh-completions"
+brew "zsh-syntax-highlighting"
 
 # ——— Casks  ———
 cask "claude-code"
