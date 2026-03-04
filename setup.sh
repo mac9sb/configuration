@@ -1,124 +1,107 @@
 #!/bin/sh
-set -eu
-
-log() {
-  level="${2:-INFO}"
-  printf "%s [%s] %s\n" "$(date +'%Y-%m-%dT%H:%M:%S%z')" "$level" "$1"
-}
-
-die() {
-  log "$*" "ERROR"
-  exit 1
-}
-
-warn() {
-  log "$*" "WARN"
-}
+# ——— Source utils ———
+. ./utils.sh
 
 [ "$(uname -s)" = "Darwin" ] || die "This script is macOS-only."
 
-CONFIG_REPO_URL="https://github.com/mac9sb/config.git"
-CONFIG_DIR="$HOME/.config"
+total_start
 
-# ——— Config Repository ———
-ensure_config_repo() {
-  if [ -d "$CONFIG_DIR/.git" ]; then
-    log "Config repo: already present at $CONFIG_DIR"
+# ——— Step: Xcode Command Line Tools ———
+install_xcode_clt() {
+  step "Installing Xcode Command Line Tools"
+  if xcode-select -p >/dev/null 2>&1; then
+    log "Already installed"
+    step_done
     return 0
   fi
-
-  if [ -e "$CONFIG_DIR" ]; then
-    die "Config path already exists and is not a git repo: $CONFIG_DIR"
-  fi
-
-  log "Cloning config repo into $CONFIG_DIR"
-  git clone "$CONFIG_REPO_URL" "$CONFIG_DIR"
+  xcode-select --install >/dev/null 2>&1 || true
+  log "Re-run this script after CLT installation finishes"
+  exit 0
 }
 
-# ——— Link Configuration Files ———
+# ——— Step: Homebrew ———
+install_brew_if_missing() {
+  step "Installing Homebrew if missing"
+  if command -v brew >/dev/null 2>&1; then
+    log "Homebrew already installed"
+    step_done
+    return 0
+  fi
+  /bin/bash -c "$(curl -fsSL https://brew.sh/install)"
+  step_done
+}
+
+# ——— Step: Brew bundle (can run in bg) ———
+brew_bundle() {
+  step "Running brew bundle"
+  cd "$CONFIG_DIR"
+  if [ ! -f "./Brewfile" ]; then
+    warn "Brewfile not found"
+    step_done
+    return 0
+  fi
+  eval "$(/opt/homebrew/bin/brew shellenv)" && brew bundle
+  /opt/homebrew/bin/rustup default stable
+  step_done
+}
+
+# ——— Step: Symlink dotfiles ———
 symlink_home_dotfiles() {
+  step "Linking dotfiles from $CONFIG_DIR"
   for file in "$CONFIG_DIR"/.*; do
     [ -f "$file" ] || continue
     filename="$(basename "$file")"
     case "$filename" in
-    . | ..) continue ;;
-    .git) continue ;;
-    *) ln -sf "$file" "$HOME/$filename" ;;
+      .|..|.git) continue ;;
+      *) ln -sf "$file" "$HOME/$filename" ;;
     esac
   done
+  step_done
 }
 
-# ——— Xcode Command Line Tools ———
-install_xcode_clt() {
-  if xcode-select -p >/dev/null 2>&1; then
-    log "Xcode Command Line Tools: already installed"
-    return 0
-  fi
-
-  log "Installing Xcode Command Line Tools (a GUI prompt will appear)..."
-  xcode-select --install >/dev/null 2>&1 || true
-  log "Re-run this script after the CLT installation finishes."
-  exit 0
-}
-
-# ——— Touch ID for sudo via sudo_local ———
+# ——— Step: Touch ID ———
 enable_touchid_for_sudo() {
+  step "Enabling Touch ID for sudo"
   template="/etc/pam.d/sudo_local.template"
   target="/etc/pam.d/sudo_local"
 
   if [ ! -f "$template" ]; then
-    log "Touch ID: $template not found; skipping"
+    log "Template not found; skipping"
+    step_done
     return 0
   fi
 
   if [ -f "$target" ] && grep -q '^[[:space:]]*auth[[:space:]]\+sufficient[[:space:]]\+pam_tid\.so' "$target" 2>/dev/null; then
-    log "Touch ID: already enabled (sudo_local)"
+    log "Already enabled"
+    step_done
     return 0
   fi
 
-  log "Enabling Touch ID for sudo (requires sudo)..."
   if sudo cp "$template" "$target" &&
-    sudo sed -i "" "s/^[[:space:]]*#auth[[:space:]]\\+sufficient[[:space:]]\\+pam_tid\\.so/auth       sufficient     pam_tid.so/" "$target"; then
-    log "Touch ID: enabled successfully"
+     sudo sed -i "" "s/^[[:space:]]*#auth[[:space:]]\\+sufficient[[:space:]]\\+pam_tid\\.so/auth       sufficient     pam_tid.so/" "$target"; then
+    log "Touch ID enabled successfully"
   else
     warn "Touch ID modification failed (continuing)"
   fi
+  step_done
 }
 
-# ——— Homebrew Installation ———
-install_brew_if_missing() {
-  if command -v brew >/dev/null 2>&1; then
-    log "Homebrew: already installed"
-    return 0
-  fi
-
-  log "Installing Homebrew..."
-  /bin/bash -c "$(curl -fsSL https://brew.sh/install)"
-}
-
-# ——— Homebrew Bundle ———
-brew_bundle() {
-  cd "$CONFIG_DIR"
-  if [ ! -f "./Brewfile" ]; then
-    warn "Brewfile not found in current directory: $(pwd)"
-    log "Skipping brew bundle."
-    return 0
-  fi
-
-  log "Running: brew bundle"
-
-  eval "$(/opt/homebrew/bin/brew shellenv)" && brew bundle
-
-  # Other tooling configuration
-  /opt/homebrew/bin/rustup default stable
-}
-
-# ——— main ———
+# ——— Main sequence ———
 log "Starting macOS setup"
-ensure_config_repo
-symlink_home_dotfiles
+
+# Sequential steps
 install_xcode_clt
-enable_touchid_for_sudo
 install_brew_if_missing
-brew_bundle
-log "Done ✅"
+
+# Start brew_bundle in background
+parallel_step "Brew bundle" brew_bundle
+
+# Sequential, independent steps
+symlink_home_dotfiles
+enable_touchid_for_sudo
+
+# Wait for brew_bundle to finish
+wait_parallel_steps
+
+total_done
+log "Setup complete ✅"
