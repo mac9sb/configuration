@@ -1,9 +1,15 @@
-export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
+# Configuration
+path=(
+    "$HOME/.cargo/bin"
+    "$HOME/.local/bin"
+    $path
+)
 setopt auto_cd correct histignorealldups interactive_comments sharehistory
 
 eval "$(/opt/homebrew/bin/brew shellenv)"
 
 # Aliases
+alias ~~="$HOME/Developer"
 alias cat="bat"
 alias bcat="/bin/cat"
 
