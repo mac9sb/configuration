@@ -33,27 +33,37 @@ total_done() {
 
 # ——— Parallelisation helpers ———
 # Usage: parallel_step "Step name" command
+PARALLEL_PIDS=""
+PARALLEL_NAMES=""
+PARALLEL_STARTS=""
+
 parallel_step() {
-  STEP_NAME=$1
+  _name=$1
   shift
-  STEP_START=$(date +%s)
-  log "$STEP_NAME... (running in background)"
+  _start=$(date +%s)
+  log "$_name... (running in background)"
   "$@" &
-  PID=$!
-  echo "$PID $STEP_NAME $STEP_START" >> /tmp/parallel_steps.log
+  _pid=$!
+  PARALLEL_PIDS="$PARALLEL_PIDS $_pid"
+  PARALLEL_NAMES="$PARALLEL_NAMES|$_name"
+  PARALLEL_STARTS="$PARALLEL_STARTS $_start"
 }
 
 wait_parallel_steps() {
-  if [ -f /tmp/parallel_steps.log ]; then
-    while read PID STEP_NAME STEP_START; do
-      if wait "$PID"; then
-        STEP_END=$(date +%s)
-        STEP_DUR=$((STEP_END - STEP_START))
-        log "$STEP_NAME done (${STEP_DUR}s)"
-      else
-        warn "$STEP_NAME failed"
-      fi
-    done < /tmp/parallel_steps.log
-    rm -f /tmp/parallel_steps.log
-  fi
+  _i=1
+  for _pid in $PARALLEL_PIDS; do
+    _i=$((_i + 1))
+    _name=$(echo "$PARALLEL_NAMES" | cut -d'|' -f"$_i")
+    _start=$(echo "$PARALLEL_STARTS" | cut -d' ' -f"$_i")
+    if wait "$_pid"; then
+      _end=$(date +%s)
+      _dur=$((_end - _start))
+      log "$_name done (${_dur}s)"
+    else
+      warn "$_name failed"
+    fi
+  done
+  PARALLEL_PIDS=""
+  PARALLEL_NAMES=""
+  PARALLEL_STARTS=""
 }
