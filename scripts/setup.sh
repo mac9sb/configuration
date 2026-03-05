@@ -29,7 +29,7 @@ install_brew_if_missing() {
     step_done
     return 0
   fi
-  /bin/bash -c "$(curl -fsSL https://brew.sh/install)"
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   step_done
 }
 
@@ -54,7 +54,7 @@ bootstrap_zshenv() {
   if [ -f "$target" ] && grep -qF 'ZDOTDIR' "$target" 2>/dev/null; then
     log "Already configured"
   else
-    echo "$content" > "$target"
+    echo "$content" >> "$target"
     log "Created $target"
   fi
   step_done
@@ -102,6 +102,27 @@ configure_macos_defaults() {
   step_done
 }
 
+# ——— Step: Load LaunchAgents ———
+load_launch_agents() {
+  step "Loading LaunchAgents"
+  _launchd_dir="$CONFIG_DIR/scripts/launchd"
+  if [ ! -d "$_launchd_dir" ]; then
+    warn "LaunchD directory not found: $_launchd_dir"
+    step_done
+    return 0
+  fi
+
+  for plist_file in "$_launchd_dir"/*.plist; do
+    if [ -f "$plist_file" ]; then
+      log "Loading $(basename "$plist_file")"
+      launchctl unload -w "$HOME/Library/LaunchAgents/$(basename "$plist_file")" >/dev/null 2>&1 || true
+      ln -sf "$plist_file" "$HOME/Library/LaunchAgents/"
+      launchctl load -w "$HOME/Library/LaunchAgents/$(basename "$plist_file")" || warn "Failed to load $(basename "$plist_file")"
+    fi
+  done
+  step_done
+}
+
 # ——— Main sequence ———
 log "Starting macOS setup"
 
@@ -116,6 +137,7 @@ parallel_step "Brew bundle" brew_bundle
 bootstrap_zshenv
 enable_touchid_for_sudo
 configure_macos_defaults
+load_launch_agents
 
 # Wait for brew_bundle to finish
 wait_parallel_steps
