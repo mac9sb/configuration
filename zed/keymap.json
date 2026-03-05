@@ -1,30 +1,11 @@
-// Zed keymap
-//
-// For information on binding keys, see the Zed
-// documentation: https://zed.dev/docs/key-bindings
-//
-// To see the default key bindings run `zed: open default keymap`
-// from the command palette.
 [
   {
-    "context": "!VimControl",
+    "context": "Terminal",
     "bindings": {
-      "ctrl-a": "editor::MoveToBeginningOfLine",
-      "ctrl-e": "editor::MoveToEndOfLine",
-      "ctrl-alt-f": "editor::MoveToNextWordEnd",
-      "ctrl-alt-b": "editor::MoveLeft",
-      "ctrl-p": "editor::MoveUp",
-      "ctrl-n": "editor::MoveDown",
-      "ctrl-o": "editor::NewlineBelow",
-      "ctrl-u": "editor::DeleteToBeginningOfLine",
-      "ctrl-k": "editor::DeleteToEndOfLine",
-    },
-  },
-  {
-    "context": "Editor && showing_completions && !VimControl",
-    "bindings": {
-      "ctrl-p": "editor::ContextMenuPrevious",
-      "ctrl-n": "editor::ContextMenuNext",
-    },
-  },
+      "shift-enter": [
+        "terminal::SendText",
+        "\u001b\r"
+      ]
+    }
+  }
 ]

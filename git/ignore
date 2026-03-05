@@ -1,6 +1,7 @@
 *.DS_Store
 *.swp
 *.swo
+*.bak
 .claude/
 .zcompdump
 .zsh_history
@@ -10,3 +11,5 @@ node_modules/
 vim/undo/
 zed/prompts/
 zed/themes/
+
+**/.claude/settings.local.json
