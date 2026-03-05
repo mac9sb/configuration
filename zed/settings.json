@@ -1,13 +1,29 @@
 {
+  "project_panel": {
+    "default_width": 300.0,
+  },
   "ui_font_family": "Liga SFMono Nerd Font",
   "git_panel": {
-    "default_width": 320,
+    "default_width": 300,
   },
   "agent": {
+    "tool_permissions": {
+      "tools": {
+        "create_directory": {
+          "always_allow": [
+            {
+              "pattern": "^Developer/configuration/scripts/",
+            },
+          ],
+        },
+        "move_path": {
+          "default": "allow",
+        },
+      },
+    },
     "default_model": {
-      "provider": "google",
-      "model": "gemini-2.5-flash",
-
+      "provider": "openrouter",
+      "model": "openrouter/free",
       "enable_thinking": true,
     },
     "default_width": 340,
