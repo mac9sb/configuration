@@ -12,7 +12,6 @@ log "PATH=$PATH"
 
 DEVELOPER_DIR="$HOME/Developer"
 LOG_DIR="/tmp"
-SUMMARY_FILE="$DEVELOPER_DIR/SUMMARY.md"
 PROMPT_FILE="$HOME/.claude-audit-completion/prompt.md"
 
 total_start
@@ -40,8 +39,6 @@ Your primary responsibility is to complete tasks in the 'AUDIT.md' files that wi
 4.  For every unchecked task ('- [ ]'), attempt to complete it by reading referenced file(s), understanding the issue, and making the fix or improvement described.
 5.  Mark the checkbox as done ('- [x]') in the 'AUDIT.md' file once the task is complete.
 
-Important: Do NOT generate any summary file or final report. The main shell script will handle the overall summary generation.
-
 ## Rules
 
 - Only attempt tasks you can confidently complete correctly.
@@ -49,17 +46,32 @@ Important: Do NOT generate any summary file or final report. The main shell scri
 - Do not introduce new bugs. Run any available tests after making changes.
 - Do not modify AUDIT.md beyond checking off completed items.
 - Be conservative — a skipped task is better than a broken codebase.
+
+## Summary Generation
+
+After completing all audit tasks, generate a summary file at '~/Developer/SUMMARY.md'.
+
+The summary should be a detailed, logical report — not just a list of checkboxes. For each project with an AUDIT.md:
+
+1. State the project name and path
+2. Report how many tasks were completed vs remaining (e.g. "7/10 completed, 3 remaining")
+3. For completed tasks: write a brief sentence explaining what was fixed and why it matters
+4. For skipped tasks: explain why they were skipped (ambiguous, risky, requires external action, etc.)
+5. Include an overall summary at the top with totals and a high-level narrative of what was accomplished
+
+Format the file as clean Markdown with a date header. Keep it concise but informative — someone reading it should understand what changed and what still needs attention without having to read each AUDIT.md individually.
+
+## Project Tracker Update
+
+After generating the summary, update '~/Developer/PROJECT_TRACKER.md':
+
+1. Update the '> Last updated:' date to today
+2. Scan all project directories under '~/Developer' for any new projects not yet listed — add them following the existing format (overview table row + detail section with phase, stack, deployment, repo link, README link)
+3. Update phase/progress percentages if audit work meaningfully advanced a project
+4. If a project has a new README, repo, or deployment since the last update, add the link
+5. Do not remove or reorder existing entries — only add and update
 PROMPT
   step_done
-}
-
-# ——— Step: Count completed tasks in an AUDIT.md ———
-count_tasks() {
-  _file=$1
-  _total=$(grep -c '^\- \[.\]' "$_file" 2>/dev/null) || _total=0
-  _done=$(grep -c '^\- \[x\]' "$_file" 2>/dev/null) || _done=0
-  _remaining=$((_total - _done))
-  echo "$_done $_remaining $_total"
 }
 
 # ——— Step: Run single Claude instance to process all AUDIT.md files ———
@@ -111,69 +123,12 @@ scan_and_run() {
   step_done
 }
 
-# ——— Step: Generate summary ———
-generate_summary() {
-  step "Generating summary at $SUMMARY_FILE"
-
-  _date=$(date +%Y-%m-%d)
-  _audit_list=$(mktemp)
-  find "$DEVELOPER_DIR" -maxdepth 4 -name "AUDIT.md" -not -path '*/.*' | sort > "$_audit_list"
-
-  cat > "$SUMMARY_FILE" <<EOF
-# Audit Summary
-> Generated: $_date
-
-EOF
-
-  _total_done=0
-  _total_remaining=0
-
-  while IFS= read -r _audit_file; do
-    _dir=$(dirname "$_audit_file")
-    _name=$(basename "$_dir")
-    _rel_path="${_audit_file#"$DEVELOPER_DIR"/}"
-
-    _counts=$(count_tasks "$_audit_file")
-    _done=$(echo "$_counts" | cut -d' ' -f1)
-    _remaining=$(echo "$_counts" | cut -d' ' -f2)
-    _total=$(echo "$_counts" | cut -d' ' -f3)
-
-    _total_done=$((_total_done + _done))
-    _total_remaining=$((_total_remaining + _remaining))
-
-    printf '## [%s](%s)\n' "$_name" "$_rel_path" >> "$SUMMARY_FILE"
-    printf '- **%s/%s** tasks completed' "$_done" "$_total" >> "$SUMMARY_FILE"
-    if [ "$_remaining" -gt 0 ]; then
-      printf ' (%s remaining)' "$_remaining" >> "$SUMMARY_FILE"
-    fi
-    printf '\n\n' >> "$SUMMARY_FILE"
-
-    # List completed tasks
-    if [ "$_done" -gt 0 ]; then
-      grep '^\- \[x\]' "$_audit_file" >> "$SUMMARY_FILE" 2>/dev/null || true
-      printf '\n' >> "$SUMMARY_FILE"
-    fi
-  done < "$_audit_list"
-
-  rm -f "$_audit_list"
-
-  # Prepend totals to summary section
-  _summary_line="**Totals:** $_total_done completed, $_total_remaining remaining"
-  sed -i '' "s/^> Generated: $_date$/> Generated: $_date\\
-\\
-$_summary_line/" "$SUMMARY_FILE"
-
-  log "Summary written: $_total_done completed, $_total_remaining remaining"
-  step_done
-}
-
 # ——— Main sequence ———
 log "Starting weekly audit completion"
 
 setup
 write_prompt
 scan_and_run
-generate_summary
 
 total_done
 log "Done"
