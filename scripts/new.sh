@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 WORK_DIR="$HOME/Work/claude"
 BUILD_DIR="$WORK_DIR/$(date +%Y-w%U)"
-LOG_DIR="$HOME/.claude-weekly/logs"
+LOG_DIR="/tmp"
 PROMPT_FILE="$HOME/.claude-weekly/prompt.md"
 
 total_start
@@ -18,7 +18,6 @@ total_start
 setup_dirs() {
   step "Setting up directories"
   mkdir -p "$BUILD_DIR"
-  mkdir -p "$LOG_DIR"
   step_done
 }
 
@@ -86,6 +85,7 @@ You are an expert full-stack engineer with creative vision and strong product in
 **AI / LLM**
 - Anthropic SDK — Claude API integration
 - OpenAI SDK — GPT API fallback
+- Cloudflare Gateway — If multiple providers are used
 
 **Testing**
 - cargo test + proptest — unit and property testing (Rust)
@@ -106,20 +106,22 @@ You are an expert full-stack engineer with creative vision and strong product in
 - Cloudflare Developer Platform (Workers, R2, D1, Pages)
 - Stripe — payments
 - Docker + Helm — containerisation and orchestration
-- Nix — reproducible dev environments and builds
+
+> [!NOTE]
+> You can reuse API keys from `~/Developer/work/claude/.env` for testing and we will swap them out as the project grows.
 
 ---
 
 ## Output
 
-All files go to: ~/Developer/Work/claude/<YYYY-wWW>/
+All files go to: ~/Work/claude/<YYYY-wWW>/
 
 Required files:
 - `README.md` — setup and usage instructions that work
 - `DECISIONS.md` — research log and architecture rationale
 - `PITCH.pdf` — sales pitch and roadmap (generate via pandoc from PITCH.md)
 
-Generate PITCH.pdf using pandoc from a PITCH.md source. PITCH.md should cover:
+README.md should also cover:
 - What the product is and who it's for
 - Why it's different from existing solutions
 - 2–3 realistic progression paths and monetisation angles
@@ -136,77 +138,9 @@ run_claude() {
   claude \
     --model claude-opus-4-6 \
     --max-turns 500 \
-    --allowedTools "Bash,Read,Write,Edit,Search,WebFetch,WebSearch" \
+    --allowedTools "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch" \
     --print \
     < "$PROMPT_FILE"
-  step_done
-}
-
-# ——— Step: Maintenance ———
-maintenance() {
-  step "Running weekly maintenance"
-
-  # macOS caches and logs
-  rm -rf "$HOME/Library/Caches/"* 2>/dev/null || true
-  rm -rf "$HOME/Library/Logs/"* 2>/dev/null || true
-  rm -rf "$HOME/Library/Developer/Xcode/DerivedData/"* 2>/dev/null || true
-  rm -rf "$HOME/Library/Developer/Xcode/Archives/"* 2>/dev/null || true
-  rm -rf "$HOME/Library/Developer/CoreSimulator/Caches/"* 2>/dev/null || true
-
-  # Homebrew cleanup
-  if command -v brew >/dev/null 2>&1; then
-    brew cleanup --prune=7 -s 2>/dev/null || true
-    brew autoremove 2>/dev/null || true
-  fi
-
-  # Rust build artefacts
-  if command -v cargo >/dev/null 2>&1; then
-    cargo cache -a 2>/dev/null || true
-  fi
-  find "$HOME/Developer" -maxdepth 4 -name "target" -type d -path "*/target" -exec rm -rf {} + 2>/dev/null || true
-
-  # Node artefacts
-  find "$HOME/Developer" -maxdepth 4 -name "node_modules" -type d -exec rm -rf {} + 2>/dev/null || true
-  find "$HOME/Developer" -maxdepth 4 -name ".next" -type d -exec rm -rf {} + 2>/dev/null || true
-  find "$HOME/Developer" -maxdepth 4 -name "dist" -type d -exec rm -rf {} + 2>/dev/null || true
-  npm cache clean --force 2>/dev/null || true
-  bun pm cache rm 2>/dev/null || true
-
-  # Docker cleanup
-  if command -v docker >/dev/null 2>&1; then
-    docker system prune -af --volumes 2>/dev/null || true
-  fi
-
-  # Nix garbage collection
-  if command -v nix-collect-garbage >/dev/null 2>&1; then
-    nix-collect-garbage -d 2>/dev/null || true
-  fi
-
-  # Trash and temp files
-  rm -rf "$HOME/.Trash/"* 2>/dev/null || true
-  rm -rf /tmp/com.apple.* 2>/dev/null || true
-
-  step_done
-}
-
-# ——— Step: Generate PDF ———
-generate_pdf() {
-  step "Generating PITCH.pdf"
-  if [ ! -f "$BUILD_DIR/PITCH.md" ]; then
-    warn "PITCH.md not found; skipping PDF"
-    step_done
-    return 0
-  fi
-  if ! command -v pandoc >/dev/null 2>&1; then
-    warn "pandoc not found; skipping PDF"
-    step_done
-    return 0
-  fi
-  pandoc "$BUILD_DIR/PITCH.md" \
-    -o "$BUILD_DIR/PITCH.pdf" \
-    --pdf-engine=xelatex \
-    -V geometry:margin=1in \
-    -V fontsize=12pt
   step_done
 }
 
@@ -229,13 +163,7 @@ log "Starting weekly Claude build"
 
 setup_dirs
 write_prompt
-
-parallel_step "Maintenance" maintenance
-parallel_step "Claude Code" run_claude
-
-wait_parallel_steps
-
-generate_pdf
+run_claude
 notify
 
 total_done
