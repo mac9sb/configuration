@@ -11,6 +11,10 @@ warn() { log "$*" "WARN"; }
 die() { log "$*" "ERROR"; exit 1; }
 
 # ——— Step timing ———
+# step/step_done use a local-friendly pattern: step prints and records
+# the start time, step_done computes the duration. When called inside
+# a subshell (e.g. parallel_step), the global writes are intentionally
+# scoped to the subshell, and timing is handled by wait_parallel_steps.
 step() {
   STEP_NAME=$1
   STEP_START=$(date +%s)
@@ -18,9 +22,9 @@ step() {
 }
 
 step_done() {
-  STEP_END=$(date +%s)
-  STEP_DUR=$((STEP_END - STEP_START))
-  log "$STEP_NAME done (${STEP_DUR}s)"
+  _step_end=$(date +%s)
+  _step_dur=$((_step_end - STEP_START))
+  log "$STEP_NAME done (${_step_dur}s)"
 }
 
 # ——— Total runtime ———
@@ -32,29 +36,40 @@ total_done() {
 }
 
 # ——— Parallelisation helpers ———
-# Usage: parallel_step "Step name" command
-PARALLEL_PIDS=""
-PARALLEL_NAMES=""
-PARALLEL_STARTS=""
+# Uses indexed temp files instead of fragile string-delimited lists.
+# Each parallel step writes its metadata to a numbered temp file.
+_PARALLEL_DIR=""
+_PARALLEL_COUNT=0
 
 parallel_step() {
   _name=$1
   shift
   _start=$(date +%s)
   log "$_name... (running in background)"
+
+  # Create temp directory on first use
+  if [ -z "$_PARALLEL_DIR" ]; then
+    _PARALLEL_DIR=$(mktemp -d)
+  fi
+
   "$@" &
   _pid=$!
-  PARALLEL_PIDS="$PARALLEL_PIDS $_pid"
-  PARALLEL_NAMES="$PARALLEL_NAMES|$_name"
-  PARALLEL_STARTS="$PARALLEL_STARTS $_start"
+  printf '%s\n%s\n%s\n' "$_pid" "$_name" "$_start" > "$_PARALLEL_DIR/$_PARALLEL_COUNT"
+  _PARALLEL_COUNT=$((_PARALLEL_COUNT + 1))
 }
 
 wait_parallel_steps() {
-  _i=1
-  for _pid in $PARALLEL_PIDS; do
-    _i=$((_i + 1))
-    _name=$(echo "$PARALLEL_NAMES" | cut -d'|' -f"$_i")
-    _start=$(echo "$PARALLEL_STARTS" | cut -d' ' -f"$_i")
+  if [ -z "$_PARALLEL_DIR" ] || [ "$_PARALLEL_COUNT" -eq 0 ]; then
+    return 0
+  fi
+
+  _i=0
+  while [ "$_i" -lt "$_PARALLEL_COUNT" ]; do
+    _file="$_PARALLEL_DIR/$_i"
+    _pid=$(sed -n '1p' "$_file")
+    _name=$(sed -n '2p' "$_file")
+    _start=$(sed -n '3p' "$_file")
+
     if wait "$_pid"; then
       _end=$(date +%s)
       _dur=$((_end - _start))
@@ -62,8 +77,10 @@ wait_parallel_steps() {
     else
       warn "$_name failed"
     fi
+    _i=$((_i + 1))
   done
-  PARALLEL_PIDS=""
-  PARALLEL_NAMES=""
-  PARALLEL_STARTS=""
+
+  rm -rf "$_PARALLEL_DIR"
+  _PARALLEL_DIR=""
+  _PARALLEL_COUNT=0
 }

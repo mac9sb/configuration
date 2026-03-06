@@ -1,7 +1,8 @@
 #!/bin/sh
+set -eu
 # ─────────────────────────────────────────────
-# Weekly Audit Completion
-# Runs every Wednesday at 16:00 via cron
+# Monthly Audit Completion
+# Runs on the 3rd of each month at 11:00 via launchd
 # Finds all AUDIT.md files, completes tasks, generates summary
 # ─────────────────────────────────────────────
 
@@ -26,51 +27,11 @@ setup() {
 # ——— Step: Write prompt ———
 write_prompt() {
   step "Writing audit task prompt"
-  cat > "$PROMPT_FILE" <<'PROMPT'
-You are a senior staff engineer working in the '~/Developer' directory.
-
-## Your Task
-
-Your primary responsibility is to complete tasks in the 'AUDIT.md' files that will be provided to you. For each file:
-
-1.  Change to the directory containing the 'AUDIT.md' file (e.g., `cd $(dirname /path/to/AUDIT.md)`).
-2.  Check if it contains any unchecked tasks (`- [ ]`). If not, skip it.
-3.  Read the 'AUDIT.md' file.
-4.  For every unchecked task ('- [ ]'), attempt to complete it by reading referenced file(s), understanding the issue, and making the fix or improvement described.
-5.  Mark the checkbox as done ('- [x]') in the 'AUDIT.md' file once the task is complete.
-
-## Rules
-
-- Only attempt tasks you can confidently complete correctly.
-- If a task is ambiguous or risky (e.g. "delete all X"), skip it and leave it unchecked.
-- Do not introduce new bugs. Run any available tests after making changes.
-- Do not modify AUDIT.md beyond checking off completed items.
-- Be conservative — a skipped task is better than a broken codebase.
-
-## Summary Generation
-
-After completing all audit tasks, generate a summary file at '~/Developer/SUMMARY.md'.
-
-The summary should be a detailed, logical report — not just a list of checkboxes. For each project with an AUDIT.md:
-
-1. State the project name and path
-2. Report how many tasks were completed vs remaining (e.g. "7/10 completed, 3 remaining")
-3. For completed tasks: write a brief sentence explaining what was fixed and why it matters
-4. For skipped tasks: explain why they were skipped (ambiguous, risky, requires external action, etc.)
-5. Include an overall summary at the top with totals and a high-level narrative of what was accomplished
-
-Format the file as clean Markdown with a date header. Keep it concise but informative — someone reading it should understand what changed and what still needs attention without having to read each AUDIT.md individually.
-
-## Project Tracker Update
-
-After generating the summary, update '~/Developer/PROJECT_TRACKER.md':
-
-1. Update the '> Last updated:' date to today
-2. Scan all project directories under '~/Developer' for any new projects not yet listed — add them following the existing format (overview table row + detail section with phase, stack, deployment, repo link, README link)
-3. Update phase/progress percentages if audit work meaningfully advanced a project
-4. If a project has a new README, repo, or deployment since the last update, add the link
-5. Do not remove or reorder existing entries — only add and update
-PROMPT
+  _prompt_src="$SCRIPT_DIR/prompts/completion.md"
+  if [ ! -f "$_prompt_src" ]; then
+    die "Completion prompt file not found: $_prompt_src"
+  fi
+  cp "$_prompt_src" "$PROMPT_FILE"
   step_done
 }
 
@@ -113,7 +74,7 @@ scan_and_run() {
   log "Launching Claude for $_audit_files_found audit tasks"
   (cd "$DEVELOPER_DIR" && claude \
     --model claude-opus-4-6 \
-    --max-turns 100 \
+    --max-turns 500 \
     --allowedTools "Bash,Read,Write,Edit,Glob,Grep" \
     --print \
     < "$PROMPT_FILE" \
@@ -124,7 +85,7 @@ scan_and_run() {
 }
 
 # ——— Main sequence ———
-log "Starting weekly audit completion"
+log "Starting monthly audit completion"
 
 setup
 write_prompt

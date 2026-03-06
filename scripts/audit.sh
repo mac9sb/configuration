@@ -1,8 +1,10 @@
 #!/bin/sh
+set -eu
 # ─────────────────────────────────────────────
-# Weekly Code Audit
-# Runs every Wednesday at 11:00 via cron
+# Monthly Code Audit
+# Runs on the 2nd of each month at 11:00 via launchd
 # Scans ~/Developer projects and creates AUDIT.md
+# Skips projects marked as "Maintenance" in TRACKER.md
 # ─────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -11,13 +13,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEVELOPER_DIR="$HOME/Developer"
 LOG_DIR="/tmp"
 PROMPT_FILE="$HOME/.claude-weekly/prompt.md"
-STALE_DAYS=14
+STALE_DAYS=45
+TRACKER_FILE="$DEVELOPER_DIR/TRACKER.md"
 
 total_start
 
 # ——— Step: Setup ———
 setup() {
-  step "Setting up weekly audit"
+  step "Setting up monthly audit"
   mkdir -p "$(dirname "$PROMPT_FILE")"
   step_done
 }
@@ -25,76 +28,23 @@ setup() {
 # ——— Step: Write prompt ———
 write_prompt() {
   step "Writing audit prompt"
-  cat > "$PROMPT_FILE" <<'PROMPT'
-You are a senior staff engineer performing a thorough code audit.
-
-## Your Task
-
-You will be provided with a list of project directories. For each project in the list:
-
-1.  Navigate to the project directory (e.g., `cd /path/to/project`).
-2.  Audit the code in that directory.
-3.  Produce a structured AUDIT.md file in that project directory.
-
-## What to Look For
-
-### Code Smells
-- Duplicated logic, dead code, overly complex functions
-- Poor naming, magic numbers, deeply nested conditionals
-- Missing or inconsistent error handling
-- Tight coupling, god objects, feature envy
-
-### Possible Bugs
-- Race conditions, off-by-one errors, null/undefined handling
-- Resource leaks (file handles, connections, memory)
-- Incorrect boundary conditions, unvalidated inputs
-- Security vulnerabilities (injection, XSS, hardcoded secrets)
-
-### Improvements
-- Performance bottlenecks and unnecessary allocations
-- Missing tests or low-coverage areas
-- Outdated dependencies with known issues
-- Opportunities to simplify or reduce complexity
-
-### Possible Next Features
-- Natural extensions based on the existing codebase
-- Missing integrations that would add clear value
-- Developer experience improvements
-
-## Output Format
-
-Write AUDIT.md with this structure:
-
-```markdown
-# Code Audit — <project name>
-> Generated: <date>
-
-## Summary
-<2-3 sentence overview of project health>
-
-## Code Smells
-- [ ] <description> — `path/to/file:line`
-- [ ] ...
-
-## Possible Bugs
-- [ ] <description> — `path/to/file:line`
-- [ ] ...
-
-## Improvements
-- [ ] <description> — `path/to/file:line`
-- [ ] ...
-
-## Possible Next Features
-- [ ] <description>
-- [ ] ...
-```
-
-Use checkbox format (`- [ ]`) so items can be checked off as addressed.
-Be specific — always reference file paths and line numbers where applicable.
-Prioritise findings by severity within each section.
-Only report genuine issues, not style nitpicks.
-PROMPT
+  _prompt_src="$SCRIPT_DIR/prompts/audit.md"
+  if [ ! -f "$_prompt_src" ]; then
+    die "Audit prompt file not found: $_prompt_src"
+  fi
+  cp "$_prompt_src" "$PROMPT_FILE"
   step_done
+}
+
+# ——— Get file modification time (portable) ———
+file_mtime() {
+  if stat -f %m "$1" >/dev/null 2>&1; then
+    # macOS / BSD stat
+    stat -f %m "$1"
+  else
+    # GNU stat (Linux)
+    stat -c %Y "$1"
+  fi
 }
 
 # ——— Check if AUDIT.md needs work ———
@@ -116,18 +66,42 @@ needs_audit() {
 
   # AUDIT.md exists and is unedited — skip
   # But check if it's stale (older than STALE_DAYS)
-  _age_seconds=$(( $(date +%s) - $(stat -f %m "$_audit") ))
+  _age_seconds=$(( $(date +%s) - $(file_mtime "$_audit") ))
   _stale_seconds=$(( STALE_DAYS * 86400 ))
 
   if [ "$_age_seconds" -gt "$_stale_seconds" ]; then
     warn "Stale AUDIT.md in $(basename "$_dir") ($((_age_seconds / 86400)) days old)"
-    osascript -e "display notification \"AUDIT.md in $(basename "$_dir") is $((_age_seconds / 86400)) days old and unreviewed\" with title \"Weekly Audit\" subtitle \"Please review\""
+    osascript -e "display notification \"AUDIT.md in $(basename "$_dir") is $((_age_seconds / 86400)) days old and unreviewed\" with title \"Weekly Audit\" subtitle \"Please review\"" 2>/dev/null || true
   fi
 
   return 1
 }
 
+# ——— Check if project is marked as Maintenance in TRACKER.md ———
+# Returns 0 (true) if project should be skipped
+is_maintenance() {
+  _dir=$1
+  _basename=$(basename "$_dir")
 
+  if [ ! -f "$TRACKER_FILE" ]; then
+    return 1
+  fi
+
+  # Check if the project row in TRACKER.md contains "Maintenance"
+  if grep -i "|\s*\[${_basename}\]" "$TRACKER_FILE" 2>/dev/null | grep -qi "maintenance"; then
+    return 0
+  fi
+
+  # Also check for "Maintenance" in the detail section header
+  if grep -qi "Phase.*Maintenance" "$TRACKER_FILE" 2>/dev/null; then
+    # More targeted: check if the basename appears near a Maintenance marker
+    if grep -B5 -i "maintenance" "$TRACKER_FILE" 2>/dev/null | grep -qi "$_basename"; then
+      return 0
+    fi
+  fi
+
+  return 1
+}
 
 # ——— Check if directory is a project ———
 is_project() {
@@ -161,6 +135,7 @@ scan_projects() {
   _project_list_for_prompt=$(mktemp)
   _projects_to_audit=0
   _projects_skipped=0
+  _claude_exit=0
 
   _dirlist=$(mktemp)
   _found_projects=$(mktemp) # Stores top-level projects to avoid auditing nested ones
@@ -176,7 +151,10 @@ scan_projects() {
 
     printf '%s\n' "$dir" >> "$_found_projects"
 
-    if needs_audit "$dir"; then
+    if is_maintenance "$dir"; then
+      log "Skipping maintenance project: $(basename "$dir")"
+      _projects_skipped=$((_projects_skipped + 1))
+    elif needs_audit "$dir"; then
       echo "- $dir" >> "$_project_list_for_prompt"
       _projects_to_audit=$((_projects_to_audit + 1))
     else
@@ -193,28 +171,75 @@ scan_projects() {
   fi
 
   # Append the list of projects to the prompt
-  echo -e "\\nProjects to audit (absolute paths):" >> "$PROMPT_FILE"
+  printf '\nProjects to audit (absolute paths):\n' >> "$PROMPT_FILE"
   cat "$_project_list_for_prompt" >> "$PROMPT_FILE"
   rm -f "$_project_list_for_prompt"
 
   _log="$LOG_DIR/weekly-audit-all.log"
 
   log "Launching Claude for $_projects_to_audit projects"
-  (cd "$DEVELOPER_DIR" && claude \
+  # Run Claude in a subshell to avoid cd affecting the parent process
+  if (cd "$DEVELOPER_DIR" && claude \
     --model claude-opus-4-6 \
     --max-turns 100 \
     --allowedTools "Bash,Read,Write,Edit,Glob,Grep" \
     --print \
     < "$PROMPT_FILE" \
-    > "$_log" 2>&1) || warn "Claude session failed for audit completion"
+    > "$_log" 2>&1); then
+    log "Claude session completed successfully"
+  else
+    _claude_exit=$?
+    warn "Claude session failed with exit code $_claude_exit"
+  fi
   log "Finished single Claude session for all project audits"
 
-  log "Audited: $_projects_to_audit | Skipped: $_projects_skipped"
+  # Generate summary report
+  _summary="$DEVELOPER_DIR/AUDIT.md"
+  _audit_count=0
+  _failure_count=0
+  _audit_report=$(mktemp)
+
+  find "$DEVELOPER_DIR" -maxdepth 4 -name "AUDIT.md" -not -path '*/.*' | sort > "$_audit_report.list" 2>/dev/null || true
+  while IFS= read -r _af; do
+    [ -n "$_af" ] || continue
+    _project_name=$(basename "$(dirname "$_af")")
+    _total_tasks=$(grep -c '^\- \[' "$_af" 2>/dev/null || echo "0")
+    _done_tasks=$(grep -c '^\- \[x\]' "$_af" 2>/dev/null || echo "0")
+    _remaining=$((_total_tasks - _done_tasks))
+    printf '- [%s](%s): %s/%s completed, %s remaining\n' \
+      "$_project_name" "$_af" "$_done_tasks" "$_total_tasks" "$_remaining" >> "$_audit_report"
+    _audit_count=$((_audit_count + 1))
+  done < "$_audit_report.list"
+  rm -f "$_audit_report.list"
+
+  if [ "$_audit_count" -gt 0 ]; then
+    {
+      printf '# Audit Summary\n'
+      printf '> Generated: %s\n\n' "$(date +%Y-%m-%d)"
+      printf '## Results\n\n'
+      printf 'Audited: %s | Skipped: %s | Claude exit: %s\n\n' \
+        "$_projects_to_audit" "$_projects_skipped" "$_claude_exit"
+      printf '## Projects\n\n'
+      cat "$_audit_report"
+    } > "$_summary"
+    log "Summary written to $_summary"
+  fi
+  rm -f "$_audit_report"
+
+  if [ "$_claude_exit" -ne 0 ]; then
+    _failure_count=$((_failure_count + 1))
+  fi
+
+  log "Audited: $_projects_to_audit | Skipped: $_projects_skipped | Failures: $_failure_count"
+
+  # Send notification
+  osascript -e "display notification \"Audited $_projects_to_audit projects, skipped $_projects_skipped\" with title \"Monthly Audit Complete\"" 2>/dev/null || true
+
   step_done
 }
 
 # ——— Main sequence ———
-log "Starting weekly code audit"
+log "Starting monthly code audit"
 
 setup
 write_prompt

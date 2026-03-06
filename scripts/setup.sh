@@ -1,4 +1,5 @@
 #!/bin/sh
+set -eu
 # ——— Source utils ———
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_DIR="$(dirname "$SCRIPT_DIR")"
@@ -112,12 +113,32 @@ load_launch_agents() {
     return 0
   fi
 
+  _uid=$(id -u)
+  _target="gui/$_uid"
+  mkdir -p "$HOME/Library/LaunchAgents"
+
   for plist_file in "$_launchd_dir"/*.plist; do
     if [ -f "$plist_file" ]; then
-      log "Loading $(basename "$plist_file")"
-      launchctl unload -w "$HOME/Library/LaunchAgents/$(basename "$plist_file")" >/dev/null 2>&1 || true
-      ln -sf "$plist_file" "$HOME/Library/LaunchAgents/"
-      launchctl load -w "$HOME/Library/LaunchAgents/$(basename "$plist_file")" || warn "Failed to load $(basename "$plist_file")"
+      _basename=$(basename "$plist_file")
+      _dest="$HOME/Library/LaunchAgents/$_basename"
+      _label=$(defaults read "$plist_file" Label 2>/dev/null || echo "")
+
+      log "Loading $_basename"
+
+      # Unload existing agent if loaded
+      if [ -n "$_label" ]; then
+        launchctl bootout "$_target/$_label" 2>/dev/null || true
+      fi
+
+      # Symlink the plist
+      ln -sf "$plist_file" "$_dest"
+
+      # Load the agent
+      if launchctl bootstrap "$_target" "$_dest" 2>/dev/null; then
+        log "Loaded $_basename successfully"
+      else
+        warn "Failed to load $_basename"
+      fi
     fi
   done
   step_done
