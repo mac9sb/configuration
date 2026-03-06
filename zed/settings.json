@@ -22,8 +22,8 @@
       },
     },
     "default_model": {
-      "provider": "openrouter",
-      "model": "openrouter/free",
+      "provider": "google",
+      "model": "gemini-2.5-flash",
       "enable_thinking": true,
     },
     "default_width": 340,
