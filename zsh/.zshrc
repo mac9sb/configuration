@@ -36,7 +36,7 @@ zinit as="command" lucid from="gh-r" for \
     atpull="%atclone" \
     jdx/usage
 
-zinit as="program" lucid from="gh-r" for \
+zinit as="command" lucid from="gh-r" for \
     id-as="mise" mv="mise* -> mise" \
     atclone="chmod +x ./mise*;./mise* completion zsh > _mise" \
     atpull="%atclone" \
@@ -57,4 +57,4 @@ bindkey -M emacs \
     "^S"    .history-incremental-search-forward
 
 # ——— Tools ———
-eval "$(zoxide init bash)"
+eval "$(zoxide init zsh)"

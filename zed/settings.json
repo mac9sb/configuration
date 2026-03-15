@@ -22,8 +22,6 @@
   },
   "auto_install_extensions": {
     "git-firefly": true,
-    "make": true,
-    "ruby": true,
     "shhhed-theme": true,
     "swift": true,
     "toml": true,
@@ -34,11 +32,6 @@
   "git_panel": {
     "default_width": 300,
     "tree_view": true,
-  },
-  "languages": {
-    "Ruby": {
-      "language_servers": ["!solargraph"],
-    },
   },
   "markdown_preview": {
     "link_click_behavior": "navigate",
