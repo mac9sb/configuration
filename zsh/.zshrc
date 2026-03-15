@@ -30,6 +30,12 @@ zinit light zsh-users/zsh-autosuggestions
 zinit light marlonrichert/zsh-autocomplete
 zinit light zsh-users/zsh-syntax-highlighting
 
+# ——— Atuin ———
+zinit ice as"command" from"gh-r" bpick"atuin-*.tar.gz" mv"atuin*/atuin -> atuin" \
+    atclone"./atuin init zsh > init.zsh; ./atuin gen-completions --shell zsh > _atuin" \
+    atpull"%atclone" src"init.zsh"
+zinit light atuinsh/atuin
+
 # ——— mise ———
 zinit as="command" lucid from="gh-r" for \
     id-as="usage" \
@@ -53,8 +59,6 @@ bindkey -M emacs \
     "^N"    .down-line-or-history \
     "^[OB"  .down-line-or-history \
     "^[[B"  .down-line-or-history \
-    "^R"    .history-incremental-search-backward \
-    "^S"    .history-incremental-search-forward
 
 # ——— Tools ———
 eval "$(zoxide init zsh)"
