@@ -1,4 +1,13 @@
+[settings]
+experimental = true
+
 [tools]
-gh = "latest"
+age = "latest"
 fzf = "latest"
+gh = "latest"
 zoxide = "latest"
+
+[env]
+GEMINI_API_KEY = {
+    age = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSB3UEkxVFFSQkFBK1ZGelBGeDd1d3lURGlxRlQraG5VUFFpTGFNWDRVZ0hNCnpJUFhKREZVNWxoRHFBSC9BTml5ZjcranJXNnBlbmdQaFV1TFdFZHhmTmMKLT4gTnh4SC1ncmVhc2UgRSB0IDQgelQKc2pBakZ4dktoMEpmMGF2SUd3bGNWWml1TDlvQ1h2UllCQ24rTTl5NmZ0cEcxV0hmcWlLTEk2VUJDRC9CNkl2MwpsUHIrSWtIOWVoRzlFV1lXQWg3NGd4cnoxMVZ5Mi9Ua1JRCi0tLSBkU3NUNkxOeXhWTmZOaUYyWkJHMDBFU21ja0dSbTd2SGl2ZGV5dTJZTWd3Cra7f5r740vB3kv3MSh0hMKbXKZnaQVaNxCqjr1543/RE4L0dEAhOjvj1aNSs0pfMtgE7hhvetPmMNNBqr6Wct6s8hefH6s4"
+}
