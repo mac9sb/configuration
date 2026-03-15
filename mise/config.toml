@@ -3,7 +3,6 @@ experimental = true
 
 [tools]
 age = "latest"
-fzf = "latest"
 gh = "latest"
 
 [env]

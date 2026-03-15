@@ -12,6 +12,9 @@
     "default_width": 320,
   },
   "agent_servers": {
+    "gemini": {
+      "type": "registry"
+    },
     "claude-acp": {
       "type": "registry",
     },
@@ -32,9 +35,9 @@
     "default_width": 300,
     "tree_view": true,
   },
-  "markdown_preview": {
-    "link_click_behavior": "navigate",
-  },
+  //"markdown_preview": {
+  // "link_click_behavior": "navigate",
+  //},
   "outline_panel": {
     "default_width": 320,
     "dock": "right",

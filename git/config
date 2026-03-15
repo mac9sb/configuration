@@ -1,3 +1,18 @@
 [user]
 	email = maclong9@icloud.com
 	name = Mac
+
+[init]
+	defaultBranch = main
+
+[pull]
+	rebase = true
+
+[push]
+	autoSetupRemote = true
+
+[credential]
+	helper = osxkeychain
+
+[core]
+	editor = vim

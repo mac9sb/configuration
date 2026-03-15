@@ -16,6 +16,7 @@ setopt promptsubst
 DISABLE_MAGIC_FUNCTIONS=true
 
 # Faster completion init
+mkdir -p ~/.cache/zsh
 autoload -Uz compinit
 compinit -C -d ~/.cache/zsh/.zcompdump
 
@@ -30,7 +31,7 @@ zinit light zsh-users/zsh-autosuggestions
 zinit light zsh-users/zsh-completions
 zinit light zsh-users/zsh-syntax-highlighting
 
-# ——— Atuin ———
+# ——— atuin ———
 zinit ice as"command" from"gh-r" bpick"atuin-*.tar.gz" mv"atuin*/atuin -> atuin" \
     atclone"./atuin init zsh > init.zsh; ./atuin gen-completions --shell zsh > _atuin" \
     atpull"%atclone" src"init.zsh"
@@ -49,6 +50,10 @@ zinit as="command" lucid from="gh-r" for \
     atload='eval "$(mise activate zsh)"' \
     jdx/mise
 
+# ——— fzf ———
+zinit ice from"gh-r" as"program" atload'eval "$(fzf --zsh)"'
+zinit light junegunn/fzf
+
 # ——— zoxide ———
 unalias zi
 zinit ice wait"2" as"command" from"gh-r" lucid \
@@ -66,3 +71,6 @@ bindkey -M emacs \
     "^N"    .down-line-or-history \
     "^[OB"  .down-line-or-history \
     "^[[B"  .down-line-or-history \
+
+# ——— Local config ———
+[[ -f .zshrc.local ]] && source .zshrc.local
