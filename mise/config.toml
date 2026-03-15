@@ -1,0 +1,4 @@
+[tools]
+gh = "latest"
+fzf = "latest"
+zoxide = "latest"
