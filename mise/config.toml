@@ -5,7 +5,6 @@ experimental = true
 age = "latest"
 fzf = "latest"
 gh = "latest"
-zoxide = "latest"
 
 [env]
 GEMINI_API_KEY = {

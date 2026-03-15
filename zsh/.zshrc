@@ -25,9 +25,9 @@ zinit ice pick"async.zsh" src"pure.zsh"
 zinit light sindresorhus/pure
 
 # ——— Plugins ———
-zinit light zsh-users/zsh-completions
-zinit light zsh-users/zsh-autosuggestions
 zinit light marlonrichert/zsh-autocomplete
+zinit light zsh-users/zsh-autosuggestions
+zinit light zsh-users/zsh-completions
 zinit light zsh-users/zsh-syntax-highlighting
 
 # ——— Atuin ———
@@ -49,6 +49,13 @@ zinit as="command" lucid from="gh-r" for \
     atload='eval "$(mise activate zsh)"' \
     jdx/mise
 
+# ——— zoxide ———
+unalias zi
+zinit ice wait"2" as"command" from"gh-r" lucid \
+  mv"zoxide*/zoxide -> zoxide" \
+  atload'eval "$(zoxide init zsh)"'
+zinit light ajeetdsouza/zoxide
+
 # ——— Keybinds ———
 bindkey -M emacs \
     "^[p"   .history-search-backward \
@@ -59,6 +66,3 @@ bindkey -M emacs \
     "^N"    .down-line-or-history \
     "^[OB"  .down-line-or-history \
     "^[[B"  .down-line-or-history \
-
-# ——— Tools ———
-eval "$(zoxide init zsh)"

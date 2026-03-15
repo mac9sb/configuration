@@ -3,7 +3,6 @@
     "commit_message_model": {
       "model": "gemini-2.5-flash",
       "provider": "google",
-      "enable_thinking": true,
     },
     "default_model": {
       "enable_thinking": true,
