@@ -1,3 +1,6 @@
+# ——— Profiling (set ZSHRC_PROFILE=1 to enable) ———
+[[ "$ZSHRC_PROFILE" == "1" ]] && zmodload zsh/zprof
+
 # ——— Options ———
 setopt auto_cd correct histignorealldups interactive_comments sharehistory
 
@@ -15,10 +18,18 @@ source "$ZINIT_HOME/zinit.zsh"
 setopt promptsubst
 DISABLE_MAGIC_FUNCTIONS=true
 
-# Faster completion init
-mkdir -p ~/.cache/zsh
+# Faster completion init (XDG-compliant cache path)
+_zcompdump_dir="${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
+mkdir -p "$_zcompdump_dir"
 autoload -Uz compinit
-compinit -C -d ~/.cache/zsh/.zcompdump
+compinit -C -d "$_zcompdump_dir/.zcompdump"
+unset _zcompdump_dir
+
+# Optional zcompile for faster source loading
+if [[ ! -f "${ZDOTDIR:-$HOME}/.zshrc.zwc" ]] || \
+   [[ "${ZDOTDIR:-$HOME}/.zshrc" -nt "${ZDOTDIR:-$HOME}/.zshrc.zwc" ]]; then
+  zcompile "${ZDOTDIR:-$HOME}/.zshrc" 2>/dev/null
+fi
 
 # ——— Prompt ———
 export PURE_PROMPT_SYMBOL="λ"
@@ -26,9 +37,17 @@ zinit ice pick"async.zsh" src"pure.zsh"
 zinit light sindresorhus/pure
 
 # ——— Plugins ———
+zinit ice wait"0" lucid
 zinit light marlonrichert/zsh-autocomplete
+
+zinit ice wait"0" lucid
 zinit light zsh-users/zsh-autosuggestions
+
+zinit ice wait"0" lucid
 zinit light zsh-users/zsh-completions
+
+# Syntax highlighting must load last
+zinit ice wait"1" lucid
 zinit light zsh-users/zsh-syntax-highlighting
 
 # ——— atuin ———
@@ -78,3 +97,6 @@ bindkey -M emacs \
 
 # ——— Local config ———
 [[ -f ${ZDOTDIR:-$HOME}/.zshrc.local ]] && source ${ZDOTDIR:-$HOME}/.zshrc.local
+
+# ——— Profiling output ———
+[[ "$ZSHRC_PROFILE" == "1" ]] && zprof

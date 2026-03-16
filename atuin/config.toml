@@ -1,4 +1,4 @@
-data_dir = "$HOME/.local/share/atuin/"
+data_dir = "${XDG_DATA_HOME:-$HOME/.local/share}/atuin/"
 dialect = "uk"
 search_mode = "daemon-fuzzy"
 
