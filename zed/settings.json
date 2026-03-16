@@ -4,11 +4,6 @@
       "model": "gemini-2.5-flash",
       "provider": "google",
     },
-    "default_model": {
-      "enable_thinking": true,
-      "model": "gemini-2.5-flash",
-      "provider": "google",
-    },
     "default_width": 320,
   },
   "agent_servers": {

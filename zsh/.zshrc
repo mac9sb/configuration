@@ -55,7 +55,7 @@ zinit ice from"gh-r" as"program" atload'eval "$(fzf --zsh)"'
 zinit light junegunn/fzf
 
 # ——— zoxide ———
-unalias zi
+unalias zi # Frees up `zi` for zoxide from `zinit` alias
 zinit ice wait"2" as"command" from"gh-r" lucid \
   mv"zoxide*/zoxide -> zoxide" \
   atload'eval "$(zoxide init zsh)"'
@@ -77,4 +77,4 @@ bindkey -M emacs \
     "^[[B"  .down-line-or-history \
 
 # ——— Local config ———
-[[ -f .zshrc.local ]] && source .zshrc.local
+[[ -f ${ZDOTDIR:-$HOME}/.zshrc.local ]] && source ${ZDOTDIR:-$HOME}/.zshrc.local
