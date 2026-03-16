@@ -68,10 +68,18 @@ To measure zsh startup time, run:
 # Quick benchmark (10 iterations)
 for i in $(seq 1 10); do /usr/bin/time zsh -i -c exit 2>&1; done
 
-# Detailed profiling (add to top of .zshrc, then open a new shell)
-# zmodload zsh/zprof
-# ... (at the bottom of .zshrc, add:)
-# zprof
+```
+
+For detailed profiling, add this to the top of your `.zshrc`:
+
+```sh
+zmodload zsh/zprof
+```
+
+And this to the bottom:
+
+```sh
+zprof
 ```
 
 You can also enable the built-in `zprof` support by setting `ZSHRC_PROFILE=1` before launching a shell:
