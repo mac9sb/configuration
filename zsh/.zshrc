@@ -61,6 +61,10 @@ zinit ice wait"2" as"command" from"gh-r" lucid \
   atload'eval "$(zoxide init zsh)"'
 zinit light ajeetdsouza/zoxide
 
+# ——— Aliases ———
+alias mr='mise run'
+alias mi='mise install'
+
 # ——— Keybinds ———
 bindkey -M emacs \
     "^[p"   .history-search-backward \
