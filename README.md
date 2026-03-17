@@ -65,24 +65,10 @@ rm -rf "$HOME/Developer/Configuration"
 To measure zsh startup time, run:
 
 ```sh
-# Quick benchmark (10 iterations)
 for i in $(seq 1 10); do /usr/bin/time zsh -i -c exit 2>&1; done
-
 ```
 
-For detailed profiling, add this to the top of your `.zshrc`:
-
-```sh
-zmodload zsh/zprof
-```
-
-And this to the bottom:
-
-```sh
-zprof
-```
-
-You can also enable the built-in `zprof` support by setting `ZSHRC_PROFILE=1` before launching a shell:
+For detailed profiling, enable the built-in `zprof` support:
 
 ```sh
 ZSHRC_PROFILE=1 zsh -i -c exit
