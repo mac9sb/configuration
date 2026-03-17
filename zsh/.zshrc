@@ -16,9 +16,8 @@ source "$ZINIT_HOME/zinit.zsh"
 
 # ——— Shell performance ———
 setopt promptsubst
-DISABLE_MAGIC_FUNCTIONS=true
 
-# Faster completion init — XDG-compliant cache path
+# Faster completion init
 _zcompdump_dir="${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
 mkdir -p "$_zcompdump_dir"
 autoload -Uz compinit

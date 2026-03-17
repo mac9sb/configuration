@@ -23,7 +23,7 @@ done
 grep -q ZDOTDIR "$HOME/.zshenv" 2>/dev/null ||
     echo "export ZDOTDIR=\"$HOME/.config/zsh\"" >> "$HOME/.zshenv"
 
-# Generate SSH key (skipped if one already exists) and link config
+# Generate SSH key and link config
 if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
     ssh-keygen -t ed25519 -C "maclong9@icloud.com"
 fi
@@ -62,13 +62,7 @@ rm -rf "$HOME/Developer/Configuration"
 
 ## Benchmarking Shell Startup
 
-To measure zsh startup time, run:
-
-```sh
-for i in $(seq 1 10); do /usr/bin/time zsh -i -c exit 2>&1; done
-```
-
-For detailed profiling, enable the built-in `zprof` support:
+Profile shell startup with the built-in `zprof` support:
 
 ```sh
 ZSHRC_PROFILE=1 zsh -i -c exit
