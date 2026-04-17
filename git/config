@@ -1,0 +1,45 @@
+[user]
+	email = maclong9@icloud.com
+	name = Mac
+	signingkey = ~/.ssh/id_ed25519.pub
+
+[init]
+	defaultBranch = main
+
+[pull]
+	rebase = true
+
+[push]
+	autoSetupRemote = true
+
+[fetch]
+	prune = true
+
+[credential]
+	helper = osxkeychain
+
+[core]
+	editor = vim
+	pager = less -FX
+
+[commit]
+	gpgsign = true
+
+[tag]
+	gpgsign = true
+
+[gpg]
+	format = ssh
+
+[diff]
+	tool = vimdiff
+
+[difftool]
+	prompt = false
+
+[merge]
+	tool = vimdiff
+	conflictstyle = zdiff3
+
+[rerere]
+	enabled = true

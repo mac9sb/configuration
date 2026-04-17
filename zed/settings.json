@@ -1,0 +1,53 @@
+{
+  "agent": {
+    "default_model": {
+      "provider": "google",
+      "model": "gemini-2.5-flash",
+      "enable_thinking": true,
+    },
+    "commit_message_model": {
+      "model": "gemini-2.5-flash",
+      "provider": "google",
+    },
+    "default_width": 320,
+  },
+  "agent_servers": {
+    "claude-acp": {
+      "type": "registry",
+    },
+  },
+  "auto_install_extensions": {
+    "git-firefly": true,
+    "pkl": true,
+    "shhhed-theme": true,
+    "swift": true,
+    "toml": true,
+  },
+  "buffer_font_family": "SF Mono",
+  "buffer_font_size": 11,
+  "diff_view_style": "unified",
+  "git_panel": {
+    "default_width": 300,
+    "tree_view": true,
+    "file_icons": true,
+  },
+  "outline_panel": {
+    "default_width": 320,
+    "dock": "right",
+  },
+  "project_panel": {
+    "default_width": 300,
+  },
+  "relative_line_numbers": "enabled",
+  "theme": {
+    "mode": "system",
+    "light": "shhhed light",
+    "dark": "shhhed",
+  },
+  "ui_font_size": 12,
+  "ui_font_family": "SF Pro Display",
+  "vim": {
+    "use_system_clipboard": "never",
+  },
+  "vim_mode": true,
+}

@@ -1,0 +1,8 @@
+[tools]
+neovim = "latest"
+node = "latest"
+claude-code = "latest"
+gh = "latest"
+
+[settings]
+env_shell_expand = true

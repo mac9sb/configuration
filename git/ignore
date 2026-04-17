@@ -1,0 +1,9 @@
+*.swo
+*.swp
+*.xcodeproj/xcuserdata/
+.DS_Store
+.build/
+.claude/
+.env*
+.swiftpm/
+mise.local.toml

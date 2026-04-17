@@ -1,0 +1,15 @@
+.claude/
+
+vim/*
+!vim/vimrc
+nvim/
+!nvim/init.lua
+!nvim/nvim-pack-lock.json
+
+zed/*
+!zed/settings.json
+
+zsh/*
+!zsh/.zprofile
+!zsh/.zshrc
+!zsh/omp.toml
