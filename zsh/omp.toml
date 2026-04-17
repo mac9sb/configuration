@@ -1,0 +1,72 @@
+"$schema" = "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json"
+version = 2
+final_space = true
+
+[transient_prompt]
+foreground = "magenta"
+background = "transparent"
+template = "λ "
+
+[[blocks]]
+type = "prompt"
+alignment = "left"
+
+  [[blocks.segments]]
+  type = "path"
+  style = "plain"
+  foreground = "#6C91BF"
+  background = "transparent"
+  template = "{{ .Path }}"
+
+    [blocks.segments.properties]
+    style = "full"
+    home_icon = "~"
+
+  [[blocks.segments]]
+  type = "git"
+  style = "plain"
+  foreground = "#767676"
+  background = "transparent"
+  template = " {{ .HEAD }}{{ if .Working.Changed }}*{{ end }}{{ if .Staging.Changed }}+{{ end }}{{ if gt .Ahead 0 }} ⇡{{ .Ahead }}{{ end }}{{ if gt .Behind 0 }} ⇣{{ .Behind }}{{ end }}"
+
+    [blocks.segments.properties]
+    fetch_status = true
+    fetch_upstream_icon = true
+
+[[blocks]]
+type = "rprompt"
+
+  [[blocks.segments]]
+  type = "executiontime"
+  style = "plain"
+  foreground = "#F5A623"
+  background = "transparent"
+  template = "{{ .FormattedMs }}"
+
+    [blocks.segments.properties]
+    always_enabled = false
+    threshold = 5000
+    style = "austin"
+
+  [[blocks.segments]]
+  type = "status"
+  style = "plain"
+  foreground = "#FF5C57"
+  background = "transparent"
+  template = "{{ .Code }}"
+
+    [blocks.segments.properties]
+    always_enabled = false
+
+[[blocks]]
+type = "prompt"
+alignment = "left"
+newline = true
+
+  [[blocks.segments]]
+  type = "text"
+  style = "plain"
+  foreground = "magenta"
+  foreground_templates = ['{{ if gt .Code 0 }}#FF5C57{{ end }}']
+  background = "transparent"
+  template = "λ "
