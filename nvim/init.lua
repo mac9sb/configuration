@@ -28,6 +28,8 @@ vim.pack.add({
 	"https://github.com/folke/lazydev.nvim",
 	-- Markdown
 	"https://github.com/MeanderingProgrammer/render-markdown.nvim",
+	-- Theme
+	"https://github.com/ember-theme/nvim",
 })
 
 -- Options
@@ -66,14 +68,17 @@ vim.keymap.set("n", "<C-l>", "<C-w><C-l>", { desc = "Move focus right" })
 vim.keymap.set("n", "<C-j>", "<C-w><C-j>", { desc = "Move focus down" })
 vim.keymap.set("n", "<C-k>", "<C-w><C-k>", { desc = "Move focus up" })
 
--- Transparent background
-vim.api.nvim_create_autocmd("VimEnter", {
-	callback = function()
-		for _, group in ipairs({ "Normal", "NormalNC", "NormalFloat", "SignColumn", "EndOfBuffer", "FloatBorder" }) do
-			vim.api.nvim_set_hl(0, group, { bg = "none" })
-		end
-	end,
-})
+-- Theme
+require("ember").setup({ transparent = true })
+vim.cmd.colorscheme("ember")
+
+vim.api.nvim_set_hl(0, "MiniStatuslineModeNormal",  { bg = "#e08060", fg = "#1c1b19", bold = true })
+vim.api.nvim_set_hl(0, "MiniStatuslineModeInsert",  { bg = "#8a9868", fg = "#1c1b19", bold = true })
+vim.api.nvim_set_hl(0, "MiniStatuslineModeVisual",  { bg = "#7890a0", fg = "#1c1b19", bold = true })
+vim.api.nvim_set_hl(0, "MiniStatuslineModeReplace", { bg = "#b07878", fg = "#1c1b19", bold = true })
+vim.api.nvim_set_hl(0, "MiniStatuslineModeCommand", { bg = "#c8b468", fg = "#1c1b19", bold = true })
+vim.api.nvim_set_hl(0, "MiniStatuslineModeOther",   { bg = "#e08060", fg = "#1c1b19", bold = true })
+vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo",    { bg = "#e08060", fg = "#1c1b19" })
 
 -- Highlight on yank
 vim.api.nvim_create_autocmd("TextYankPost", {
@@ -113,8 +118,22 @@ require("which-key").setup({
 	spec = {
 		{ "<leader>c", group = "Code" },
 		{ "<leader>s", group = "Search" },
+		{ "<leader>p", group = "Projects" },
 	},
 })
+
+local projects = {
+	a = { path = "~/Developer/allegro", desc = "allegro" },
+	c = { path = "~/Developer/configuration", desc = "configuration" },
+	s = { path = "~/Developer/ssl", desc = "ssl" },
+	o = { path = "~/Developer/other", desc = "other" },
+}
+for key, proj in pairs(projects) do
+	vim.keymap.set("n", "<leader>p" .. key, function()
+		vim.fn.chdir(vim.fn.expand(proj.path))
+		require("fzf-lua").files()
+	end, { desc = proj.desc })
+end
 require("mini.ai").setup({ n_lines = 500 })
 require("mini.surround").setup()
 require("mini.pairs").setup()
