@@ -25,7 +25,7 @@ fi
 
 # Create Symbolic Links to Configuration Files
 mkdir -p "$HOME/.config"
-for dir in git mise nvim ssh vim zed zsh; do
+for dir in ghostty git mise nvim ssh vim zed zsh; do
     target="$HOME/.config/$dir"
     source="$REPO/$dir"
     if [ "$(readlink "$target" 2>/dev/null)" = "$source" ]; then
