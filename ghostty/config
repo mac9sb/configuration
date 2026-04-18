@@ -1,4 +1,6 @@
-theme = ember
+theme = light:Kanagawa Lotus,dark:Kanagawa Dragon
+background-opacity = 0.95
+background-blur = true
 macos-option-as-alt = true
 
 # Typography

@@ -27,7 +27,7 @@ vim.pack.add({
 	"https://github.com/folke/which-key.nvim",
 	"https://github.com/folke/lazydev.nvim",
 	-- Theme
-	"https://github.com/ember-theme/nvim",
+	"https://github.com/rebelot/kanagawa.nvim",
 })
 
 -- Options
@@ -56,7 +56,6 @@ vim.opt.wrap = false
 vim.opt.autoread = true
 
 -- Keymaps
-
 vim.keymap.set("n", "<Esc>", "<cmd>nohlsearch<CR>")
 vim.keymap.set("n", "-", "<cmd>Oil<CR>", { desc = "Open parent directory" })
 vim.keymap.set("n", "<leader>q", vim.diagnostic.setloclist, { desc = "Open diagnostic quickfix" })
@@ -66,19 +65,7 @@ vim.keymap.set("n", "<C-l>", "<C-w><C-l>", { desc = "Move focus right" })
 vim.keymap.set("n", "<C-j>", "<C-w><C-j>", { desc = "Move focus down" })
 vim.keymap.set("n", "<C-k>", "<C-w><C-k>", { desc = "Move focus up" })
 
--- Theme
-require("ember").setup({ transparent = true })
-vim.cmd.colorscheme("ember")
-
-vim.api.nvim_set_hl(0, "MiniStatuslineModeNormal", { bg = "#e08060", fg = "#1c1b19", bold = true })
-vim.api.nvim_set_hl(0, "MiniStatuslineModeInsert", { bg = "#8a9868", fg = "#1c1b19", bold = true })
-vim.api.nvim_set_hl(0, "MiniStatuslineModeVisual", { bg = "#7890a0", fg = "#1c1b19", bold = true })
-vim.api.nvim_set_hl(0, "MiniStatuslineModeReplace", { bg = "#b07878", fg = "#1c1b19", bold = true })
-vim.api.nvim_set_hl(0, "MiniStatuslineModeCommand", { bg = "#c8b468", fg = "#1c1b19", bold = true })
-vim.api.nvim_set_hl(0, "MiniStatuslineModeOther", { bg = "#e08060", fg = "#1c1b19", bold = true })
-vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { bg = "#e08060", fg = "#1c1b19" })
-
--- Highlight on yank
+-- Autocmds
 vim.api.nvim_create_autocmd("TextYankPost", {
 	group = vim.api.nvim_create_augroup("highlight-yank", { clear = true }),
 	callback = function()
@@ -86,7 +73,6 @@ vim.api.nvim_create_autocmd("TextYankPost", {
 	end,
 })
 
--- Wrap in markdown only
 vim.api.nvim_create_autocmd("FileType", {
 	pattern = "markdown",
 	callback = function()
@@ -94,7 +80,6 @@ vim.api.nvim_create_autocmd("FileType", {
 	end,
 })
 
--- Auto-reload files changed outside Neovim
 vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold", "CursorHoldI" }, {
 	callback = function()
 		if vim.fn.mode() ~= "c" then
@@ -103,13 +88,32 @@ vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold", "CursorHo
 	end,
 })
 
--- Diagnostics
-vim.diagnostic.config({
-	severity_sort = true,
-	float = { border = "rounded", source = "if_many" },
-	underline = { severity = vim.diagnostic.severity.ERROR },
-	virtual_text = { source = "if_many", spacing = 2 },
+-- Theme
+require("kanagawa").setup({
+	transparent = true,
+	background = { dark = "dragon", light = "lotus" },
 })
+vim.cmd.colorscheme("kanagawa")
+
+vim.api.nvim_set_hl(0, "Normal", { bg = "NONE" })
+vim.api.nvim_set_hl(0, "NormalNC", { bg = "NONE" })
+vim.api.nvim_set_hl(0, "SignColumn", { bg = "NONE" })
+vim.api.nvim_set_hl(0, "LineNr", { bg = "NONE" })
+vim.api.nvim_set_hl(0, "CursorLine", { bg = "NONE" })
+vim.api.nvim_set_hl(0, "CursorLineNr", { bg = "NONE" })
+vim.api.nvim_set_hl(0, "GitSignsAdd", { bg = "NONE" })
+vim.api.nvim_set_hl(0, "GitSignsChange", { bg = "NONE" })
+vim.api.nvim_set_hl(0, "GitSignsDelete", { bg = "NONE" })
+vim.api.nvim_set_hl(0, "GitSignsTopdelete", { bg = "NONE" })
+vim.api.nvim_set_hl(0, "GitSignsChangedelete", { bg = "NONE" })
+vim.api.nvim_set_hl(0, "GitSignsUntracked", { bg = "NONE" })
+vim.api.nvim_set_hl(0, "MiniStatuslineModeNormal", { bg = "#7fb4ca", fg = "#181616", bold = true })
+vim.api.nvim_set_hl(0, "MiniStatuslineModeInsert", { bg = "#98bb6c", fg = "#181616", bold = true })
+vim.api.nvim_set_hl(0, "MiniStatuslineModeVisual", { bg = "#957fb8", fg = "#181616", bold = true })
+vim.api.nvim_set_hl(0, "MiniStatuslineModeReplace", { bg = "#c4746e", fg = "#181616", bold = true })
+vim.api.nvim_set_hl(0, "MiniStatuslineModeCommand", { bg = "#c4b28a", fg = "#181616", bold = true })
+vim.api.nvim_set_hl(0, "MiniStatuslineModeOther", { bg = "#7fb4ca", fg = "#181616", bold = true })
+vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { bg = "#7fb4ca", fg = "#181616" })
 
 -- UI
 require("which-key").setup({
@@ -132,14 +136,40 @@ for key, proj in pairs(projects) do
 		require("fzf-lua").files()
 	end, { desc = proj.desc })
 end
+
 require("mini.ai").setup({ n_lines = 500 })
 require("mini.surround").setup()
 require("mini.pairs").setup()
 require("mini.icons").setup()
-require("mini.statusline").setup({ use_icons = true })
+
+local statusline = require("mini.statusline")
+statusline.setup({
+	use_icons = true,
+	content = {
+		active = function()
+			local mode, mode_hl = statusline.section_mode({ trunc_width = 120 })
+			local git = statusline.section_git({ trunc_width = 40 })
+			local diff = statusline.section_diff({ trunc_width = 75 })
+			local diagnostics = statusline.section_diagnostics({ trunc_width = 75 })
+			local filename = statusline.section_filename({ trunc_width = 140 })
+			local fileinfo = statusline.section_fileinfo({ trunc_width = 120 })
+			local location = statusline.section_location({ trunc_width = 75 })
+			return statusline.combine_groups({
+				{ hl = mode_hl, strings = { mode:sub(1, 1) } },
+				{ hl = "MiniStatuslineDevinfo", strings = { git, diff, diagnostics } },
+				"%<",
+				{ hl = "MiniStatuslineFilename", strings = { filename } },
+				"%=",
+				{ hl = "MiniStatuslineFileinfo", strings = { fileinfo } },
+				{ hl = mode_hl, strings = { location } },
+			})
+		end,
+	},
+})
+
 require("fidget").setup({})
 
--- File Navigation
+-- Navigation
 require("oil").setup({
 	default_file_explorer = true,
 	view_options = { show_hidden = true },
@@ -172,11 +202,15 @@ require("gitsigns").setup({
 	},
 })
 
--- LSP
-require("lazydev").setup({
-	library = { { path = "${3rd}/luv/library", words = { "vim%.uv" } } },
+-- Diagnostics
+vim.diagnostic.config({
+	severity_sort = true,
+	float = { border = "rounded", source = "if_many" },
+	underline = { severity = vim.diagnostic.severity.ERROR },
+	virtual_text = { source = "if_many", spacing = 2 },
 })
 
+-- Completion
 require("blink.cmp").setup({
 	keymap = { preset = "default" },
 	appearance = { nerd_font_variant = "mono" },
@@ -188,6 +222,11 @@ require("blink.cmp").setup({
 	snippets = { preset = "default" },
 	fuzzy = { implementation = "lua" },
 	signature = { enabled = true },
+})
+
+-- LSP
+require("lazydev").setup({
+	library = { { path = "${3rd}/luv/library", words = { "vim%.uv" } } },
 })
 
 vim.api.nvim_create_autocmd("LspAttach", {
@@ -224,6 +263,8 @@ vim.api.nvim_create_autocmd("LspAttach", {
 
 vim.lsp.config("*", { capabilities = require("blink.cmp").get_lsp_capabilities() })
 vim.lsp.config("lua_ls", { settings = { Lua = { completion = { callSnippet = "Replace" } } } })
+vim.lsp.enable("eslint")
+vim.lsp.enable("sourcekit") -- Swift; not mason-managed, uses system Xcode toolchain
 
 require("mason").setup()
 require("mason-tool-installer").setup({
@@ -240,9 +281,6 @@ require("mason-tool-installer").setup({
 	},
 })
 require("mason-lspconfig").setup({ automatic_enable = true })
-
-vim.lsp.enable("eslint")
-vim.lsp.enable("sourcekit") -- Swift; not mason-managed, uses system Xcode toolchain
 
 -- Formatting
 require("conform").setup({
@@ -267,23 +305,10 @@ vim.api.nvim_create_autocmd("FileType", {
 })
 require("nvim-treesitter").setup({
 	ensure_installed = {
-		"bash",
-		"c",
-		"css",
-		"diff",
-		"html",
-		"javascript",
-		"lua",
-		"luadoc",
-		"markdown",
-		"markdown_inline",
-		"query",
-		"regex",
-		"swift",
-		"tsx",
-		"typescript",
-		"vim",
-		"vimdoc",
+		"bash", "c", "css", "diff", "html", "javascript",
+		"lua", "luadoc", "markdown", "markdown_inline",
+		"query", "regex", "swift", "tsx", "typescript",
+		"vim", "vimdoc",
 	},
 	auto_install = true,
 	highlight = { enable = true },

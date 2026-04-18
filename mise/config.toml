@@ -6,3 +6,4 @@ gh = "latest"
 
 [settings]
 env_shell_expand = true
+experimental = true
