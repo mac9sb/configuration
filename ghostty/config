@@ -1,0 +1,29 @@
+theme = ember
+macos-option-as-alt = true
+
+# Typography
+font-family = "SF Mono"
+font-size = 11
+
+# Padding
+window-padding-x = 16
+window-padding-y = 12
+window-padding-balance = true
+
+# SSH terminfo — auto-send terminfo to remote hosts
+shell-integration-features = ssh-env,ssh-terminfo
+
+# Splits — navigate with Option+Arrow
+keybind = opt+h=goto_split:left
+keybind = opt+k=goto_split:up
+keybind = opt+j=goto_split:down
+keybind = opt+l=goto_split:right
+
+# Split resizing — Option+Shift+hjkl
+keybind = opt+shift+h=resize_split:left,10
+keybind = opt+shift+k=resize_split:up,10
+keybind = opt+shift+j=resize_split:down,10
+keybind = opt+shift+l=resize_split:right,10
+
+# Equalize splits
+keybind = opt+shift+e=equalize_splits
