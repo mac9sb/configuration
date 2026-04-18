@@ -31,7 +31,7 @@ alignment = "left"
 
     [blocks.segments.properties]
     fetch_status = true
-    fetch_upstream_icon = true
+    branch_icon = ""
 
 [[blocks]]
 type = "rprompt"
