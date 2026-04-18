@@ -172,9 +172,6 @@ require("gitsigns").setup({
 	},
 })
 
--- Markdown
-require("render-markdown").setup({})
-
 -- LSP
 require("lazydev").setup({
 	library = { { path = "${3rd}/luv/library", words = { "vim%.uv" } } },
