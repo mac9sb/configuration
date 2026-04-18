@@ -26,8 +26,6 @@ vim.pack.add({
 	"https://github.com/echasnovski/mini.icons",
 	"https://github.com/folke/which-key.nvim",
 	"https://github.com/folke/lazydev.nvim",
-	-- Markdown
-	"https://github.com/MeanderingProgrammer/render-markdown.nvim",
 	-- Theme
 	"https://github.com/ember-theme/nvim",
 })
@@ -72,13 +70,13 @@ vim.keymap.set("n", "<C-k>", "<C-w><C-k>", { desc = "Move focus up" })
 require("ember").setup({ transparent = true })
 vim.cmd.colorscheme("ember")
 
-vim.api.nvim_set_hl(0, "MiniStatuslineModeNormal",  { bg = "#e08060", fg = "#1c1b19", bold = true })
-vim.api.nvim_set_hl(0, "MiniStatuslineModeInsert",  { bg = "#8a9868", fg = "#1c1b19", bold = true })
-vim.api.nvim_set_hl(0, "MiniStatuslineModeVisual",  { bg = "#7890a0", fg = "#1c1b19", bold = true })
+vim.api.nvim_set_hl(0, "MiniStatuslineModeNormal", { bg = "#e08060", fg = "#1c1b19", bold = true })
+vim.api.nvim_set_hl(0, "MiniStatuslineModeInsert", { bg = "#8a9868", fg = "#1c1b19", bold = true })
+vim.api.nvim_set_hl(0, "MiniStatuslineModeVisual", { bg = "#7890a0", fg = "#1c1b19", bold = true })
 vim.api.nvim_set_hl(0, "MiniStatuslineModeReplace", { bg = "#b07878", fg = "#1c1b19", bold = true })
 vim.api.nvim_set_hl(0, "MiniStatuslineModeCommand", { bg = "#c8b468", fg = "#1c1b19", bold = true })
-vim.api.nvim_set_hl(0, "MiniStatuslineModeOther",   { bg = "#e08060", fg = "#1c1b19", bold = true })
-vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo",    { bg = "#e08060", fg = "#1c1b19" })
+vim.api.nvim_set_hl(0, "MiniStatuslineModeOther", { bg = "#e08060", fg = "#1c1b19", bold = true })
+vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { bg = "#e08060", fg = "#1c1b19" })
 
 -- Highlight on yank
 vim.api.nvim_create_autocmd("TextYankPost", {
