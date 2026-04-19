@@ -27,18 +27,19 @@ fi
 mkdir -p "$HOME/.config"
 for dir in ghostty git mise nvim ssh vim zed zsh; do
     target="$HOME/.config/$dir"
-    source="$REPO/$dir"
-    if [ "$(readlink "$target" 2>/dev/null)" = "$source" ]; then
+    src="$REPO/$dir"
+    if [ "$(readlink "$target" 2>/dev/null)" = "$src" ]; then
         continue
     fi
     [ -e "$target" ] && mv "$target" "$target.bak"
-    ln -sn "$source" "$target"
+    ln -sn "$src" "$target"
 done
 
 # Point ZSH to Custom Configuration Location
-[ -f "$HOME/.zshenv" ] && cp "$HOME/.zshenv" "$HOME/.zshenv.bak"
-grep -q ZDOTDIR "$HOME/.zshenv" 2>/dev/null ||
+grep -q ZDOTDIR "$HOME/.zshenv" 2>/dev/null || {
+    [ -f "$HOME/.zshenv" ] && cp "$HOME/.zshenv" "$HOME/.zshenv.bak"
     echo "export ZDOTDIR=\"$HOME/.config/zsh\"" >> "$HOME/.zshenv"
+}
 
 # Generate an SSH Key
 if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
@@ -46,8 +47,7 @@ if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
     ssh-keygen -t ed25519 -C "maclong9@icloud.com" \
         -f "$HOME/.ssh/id_ed25519" -N ""
 fi
-[ "$(readlink "$HOME/.ssh/config" 2>/dev/null)" = "$HOME/.config/ssh/config" ] ||
-    ln -sf "$HOME/.config/ssh/config" "$HOME/.ssh/config"
+ln -sf "$HOME/.config/ssh/config" "$HOME/.ssh/config"
 
 # Install Homebrew
 if ! command -v brew >/dev/null 2>&1; then
@@ -66,10 +66,38 @@ done
 brew bundle --file="$REPO/Brewfile"
 
 # Install project-level tools via mise
-mise trust && mise install
+mise trust "$REPO/mise/config.toml" && mise install
+
+# Claude Code configuration
+mkdir -p "$HOME/.claude"
+for file in CLAUDE.md settings.json; do
+    target="$HOME/.claude/$file"
+    src="$REPO/claude/$file"
+    if [ "$(readlink "$target" 2>/dev/null)" != "$src" ]; then
+        [ -e "$target" ] && mv "$target" "$target.bak"
+        ln -sn "$src" "$target"
+    fi
+done
+
+# Install enabled Claude plugins
+if command -v claude >/dev/null 2>&1; then
+    if claude plugins list >/dev/null 2>&1; then
+        python3 -c "
+import json
+with open('$REPO/claude/settings.json') as f:
+    s = json.load(f)
+for k, v in s.get('enabledPlugins', {}).items():
+    if v: print(k)
+" | while IFS= read -r plugin; do
+            claude plugins install "\$plugin" 2>/dev/null || true
+        done
+    else
+        printf '%s\n' "Claude not authenticated — run 'claude /login' then re-run this script to install plugins"
+    fi
+fi
 
 # Setup GitHub CLI Tool
-gh auth login -s admin:ssh_signing_key
+gh auth status >/dev/null 2>&1 || gh auth login -s admin:ssh_signing_key
 if ! gh ssh-key list --json key,title 2>/dev/null | grep -Fq "$(cat "$HOME/.ssh/id_ed25519.pub")"; then
     gh ssh-key add "$HOME/.ssh/id_ed25519.pub" --title "$(hostname)" --type signing
 fi

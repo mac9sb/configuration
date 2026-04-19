@@ -5,13 +5,13 @@ MACOS=false
 [ "$(uname)" = "Darwin" ] && MACOS=true
 
 # Remove symlinks
-for dir in git mise nvim ssh vim zed zsh; do
+for dir in ghostty git mise nvim ssh vim zed zsh; do
     rm -f "$HOME/.config/$dir"
 done
 rm -f "$HOME/.ssh/config"
 
 # Restore backups
-for dir in git mise nvim ssh vim zed zsh; do
+for dir in ghostty git mise nvim ssh vim zed zsh; do
     [ -e "$HOME/.config/$dir.bak" ] && mv "$HOME/.config/$dir.bak" "$HOME/.config/$dir"
 done
 [ -f "$HOME/.zshenv.bak" ] && mv "$HOME/.zshenv.bak" "$HOME/.zshenv" ||
@@ -54,6 +54,7 @@ if [ "$MACOS" = true ]; then
     defaults delete com.apple.controlcenter "NSStatusItem VisibleCC NowPlaying" 2>/dev/null || true
     defaults delete com.apple.controlcenter "NSStatusItem VisibleCC Clock" 2>/dev/null || true
     defaults delete com.apple.controlcenter "NSStatusItem VisibleCC BentoBox-0" 2>/dev/null || true
+    defaults delete com.apple.controlcenter "NSStatusItem VisibleCC Spotlight" 2>/dev/null || true
 
     killall ControlCenter 2>/dev/null || true
     killall SystemUIServer 2>/dev/null || true

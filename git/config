@@ -19,7 +19,7 @@
 	helper = osxkeychain
 
 [core]
-	editor = vim
+	editor = nvim
 	pager = less -FX
 
 [commit]

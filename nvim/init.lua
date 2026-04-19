@@ -1,4 +1,3 @@
--- TODO: Install `flash.nvim`
 -- Leader keys
 vim.g.mapleader = " "
 vim.g.maplocalleader = " "
@@ -27,6 +26,7 @@ vim.pack.add({
 	"https://github.com/echasnovski/mini.icons",
 	"https://github.com/folke/which-key.nvim",
 	"https://github.com/folke/lazydev.nvim",
+	"https://github.com/folke/flash.nvim",
 	-- Theme
 	"https://github.com/rebelot/kanagawa.nvim",
 })
@@ -54,7 +54,6 @@ vim.opt.shiftwidth = 2
 vim.opt.tabstop = 2
 vim.opt.confirm = true
 vim.opt.wrap = false
-vim.opt.autoread = true
 
 -- Keymaps
 vim.keymap.set("n", "<Esc>", "<cmd>nohlsearch<CR>")
@@ -97,12 +96,9 @@ require("kanagawa").setup({
 })
 vim.cmd.colorscheme("kanagawa")
 
-vim.api.nvim_set_hl(0, "Normal", { bg = "NONE" })
-vim.api.nvim_set_hl(0, "NormalNC", { bg = "NONE" })
 vim.api.nvim_set_hl(0, "SignColumn", { bg = "NONE" })
 if vim.o.background == "dark" then
 	vim.api.nvim_set_hl(0, "LineNr", { bg = "NONE" })
-	vim.api.nvim_set_hl(0, "CursorLine", { bg = "NONE" })
 	vim.api.nvim_set_hl(0, "CursorLineNr", { bg = "NONE" })
 end
 vim.api.nvim_set_hl(0, "GitSignsAdd", { bg = "NONE" })
@@ -145,6 +141,11 @@ require("mini.ai").setup({ n_lines = 500 })
 require("mini.surround").setup()
 require("mini.pairs").setup()
 require("mini.icons").setup()
+
+require("flash").setup()
+vim.keymap.set({ "n", "x", "o" }, "s", function() require("flash").jump() end, { desc = "Flash jump" })
+vim.keymap.set({ "n", "x", "o" }, "S", function() require("flash").treesitter() end, { desc = "Flash treesitter" })
+vim.keymap.set("o", "r", function() require("flash").remote() end, { desc = "Flash remote" })
 
 local statusline = require("mini.statusline")
 statusline.setup({
@@ -189,6 +190,7 @@ vim.keymap.set("n", "<leader>sf", fzf.files, { desc = "Search files" })
 vim.keymap.set("n", "<leader>sw", fzf.grep_cword, { desc = "Search word" })
 vim.keymap.set("n", "<leader>sg", fzf.live_grep, { desc = "Search grep" })
 vim.keymap.set("n", "<leader>sd", fzf.diagnostics_document, { desc = "Search diagnostics" })
+vim.keymap.set("n", "<leader>sD", fzf.git_status, { desc = "Search diffs" })
 vim.keymap.set("n", "<leader>ss", fzf.lsp_workspace_symbols, { desc = "Search symbols" })
 vim.keymap.set("n", "<leader>sr", fzf.resume, { desc = "Search resume" })
 vim.keymap.set("n", "<leader>s.", fzf.oldfiles, { desc = "Search recent files" })
@@ -218,7 +220,7 @@ vim.diagnostic.config({
 require("blink.cmp").setup({
 	keymap = { preset = "default" },
 	appearance = { nerd_font_variant = "mono" },
-	completion = { documentation = { auto_show = false, auto_show_delay_ms = 500 } },
+	completion = { documentation = { auto_show = false } },
 	sources = {
 		default = { "lsp", "path", "snippets", "lazydev" },
 		providers = { lazydev = { module = "lazydev.integrations.blink", score_offset = 100 } },

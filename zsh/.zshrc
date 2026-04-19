@@ -52,7 +52,6 @@ else
 fi
 
 # Compile zshrc for faster loading
-setopt promptsubst
 if [[ ! -f "${ZDOTDIR:-$HOME}/.zshrc.zwc" ]] || \
    [[ "${ZDOTDIR:-$HOME}/.zshrc" -nt "${ZDOTDIR:-$HOME}/.zshrc.zwc" ]]; then
   zcompile "${ZDOTDIR:-$HOME}/.zshrc" 2>/dev/null

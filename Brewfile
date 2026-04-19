@@ -26,7 +26,7 @@ if OS.mac?
   mas "Logic Pro",      id: 634148309
   mas "MainStage",      id: 634159523
   mas "Motion",         id: 434290957
-  mas "Nord VPN",       id: 905953485
+  mas "NordVPN",        id: 905953485
   mas "Numbers",        id: 361304891
   mas "Pages",          id: 361309726
   mas "Pixelmator Pro", id: 1289583905
