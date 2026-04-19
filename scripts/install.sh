@@ -42,9 +42,10 @@ grep -q ZDOTDIR "$HOME/.zshenv" 2>/dev/null ||
 
 # Generate an SSH Key
 if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
-    ssh-keygen -t ed25519 -C "maclong9@icloud.com"
+    mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+    ssh-keygen -t ed25519 -C "maclong9@icloud.com" \
+        -f "$HOME/.ssh/id_ed25519" -N ""
 fi
-mkdir -p "$HOME/.ssh"
 [ "$(readlink "$HOME/.ssh/config" 2>/dev/null)" = "$HOME/.config/ssh/config" ] ||
     ln -sf "$HOME/.config/ssh/config" "$HOME/.ssh/config"
 
