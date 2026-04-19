@@ -19,11 +19,11 @@
   "auto_install_extensions": {
     "git-firefly": true,
     "pkl": true,
-    "shhhed-theme": true,
+    "kanagawa-themes": true,
     "swift": true,
     "toml": true,
   },
-  "buffer_font_family": "SF Mono",
+  "buffer_font_family": "Liga SFMono Nerd Font",
   "buffer_font_size": 11,
   "diff_view_style": "unified",
   "git_panel": {
@@ -41,11 +41,11 @@
   "relative_line_numbers": "enabled",
   "theme": {
     "mode": "system",
-    "light": "shhhed light",
-    "dark": "shhhed",
+    "light": "Kanagawa Lotus",
+    "dark": "Kanagawa Dragon",
   },
   "ui_font_size": 12,
-  "ui_font_family": "SF Pro Display",
+  "ui_font_family": "Liga SFMono Nerd Font",
   "vim": {
     "use_system_clipboard": "never",
   },
