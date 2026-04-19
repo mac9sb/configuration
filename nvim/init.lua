@@ -1,3 +1,4 @@
+-- TODO: Install `flash.nvim`
 -- Leader keys
 vim.g.mapleader = " "
 vim.g.maplocalleader = " "
@@ -99,9 +100,11 @@ vim.cmd.colorscheme("kanagawa")
 vim.api.nvim_set_hl(0, "Normal", { bg = "NONE" })
 vim.api.nvim_set_hl(0, "NormalNC", { bg = "NONE" })
 vim.api.nvim_set_hl(0, "SignColumn", { bg = "NONE" })
-vim.api.nvim_set_hl(0, "LineNr", { bg = "NONE" })
-vim.api.nvim_set_hl(0, "CursorLine", { bg = "NONE" })
-vim.api.nvim_set_hl(0, "CursorLineNr", { bg = "NONE" })
+if vim.o.background == "dark" then
+	vim.api.nvim_set_hl(0, "LineNr", { bg = "NONE" })
+	vim.api.nvim_set_hl(0, "CursorLine", { bg = "NONE" })
+	vim.api.nvim_set_hl(0, "CursorLineNr", { bg = "NONE" })
+end
 vim.api.nvim_set_hl(0, "GitSignsAdd", { bg = "NONE" })
 vim.api.nvim_set_hl(0, "GitSignsChange", { bg = "NONE" })
 vim.api.nvim_set_hl(0, "GitSignsDelete", { bg = "NONE" })
@@ -324,10 +327,23 @@ vim.api.nvim_create_autocmd("FileType", {
 })
 require("nvim-treesitter").setup({
 	ensure_installed = {
-		"bash", "c", "css", "diff", "html", "javascript",
-		"lua", "luadoc", "markdown", "markdown_inline",
-		"query", "regex", "swift", "tsx", "typescript",
-		"vim", "vimdoc",
+		"bash",
+		"c",
+		"css",
+		"diff",
+		"html",
+		"javascript",
+		"lua",
+		"luadoc",
+		"markdown",
+		"markdown_inline",
+		"query",
+		"regex",
+		"swift",
+		"tsx",
+		"typescript",
+		"vim",
+		"vimdoc",
 	},
 	auto_install = true,
 	highlight = { enable = true },

@@ -34,14 +34,6 @@ zinit light Aloxaf/fzf-tab
 zinit ice atload'ZSH_AUTOSUGGEST_STRATEGY=(history)'
 zinit light zsh-users/zsh-autosuggestions
 
-zinit ice wait"0" silent nocd from"gh-r" as"program" atload'eval "$(fzf --zsh)"'
-zinit light junegunn/fzf
-
-zinit ice wait"0" silent nocd as"command" from"gh-r" \
-  mv"zoxide*/zoxide -> zoxide" \
-  atload'eval "$(zoxide init zsh)"'
-zinit light ajeetdsouza/zoxide
-
 # Completion
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'
 zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
@@ -69,18 +61,15 @@ fi
 # mise (activates managed tools onto PATH)
 eval "$(mise activate zsh)"
 
+# Shell integrations
+eval "$(fzf --zsh)"
+eval "$(zoxide init zsh)"
+
 # Prompt
-zinit ice as"command" from"gh-r" \
-  bpick"posh-${(L)$(uname -s)}-${${$(uname -m)/x86_64/amd64}/aarch64/arm64}" \
-  mv"posh-* -> oh-my-posh" \
-  atclone"chmod +x oh-my-posh" atpull"%atclone" \
-  atload'
-    eval "$(oh-my-posh init zsh --config ${ZDOTDIR:-$HOME/.config/zsh}/omp.toml)"
-    autoload -Uz add-zsh-hook
-    _omp_prompt_newline() { print "" }
-    add-zsh-hook precmd _omp_prompt_newline
-  '
-zinit light JanDeDobbeleer/oh-my-posh
+eval "$(oh-my-posh init zsh --config ${ZDOTDIR:-$HOME/.config/zsh}/omp.toml)"
+autoload -Uz add-zsh-hook
+_omp_prompt_newline() { print "" }
+add-zsh-hook precmd _omp_prompt_newline
 
 # Local overrides
 [[ -f ${ZDOTDIR:-$HOME}/.zshrc.local ]] && source ${ZDOTDIR:-$HOME}/.zshrc.local
