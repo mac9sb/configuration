@@ -48,9 +48,24 @@ mkdir -p "$HOME/.ssh"
 [ "$(readlink "$HOME/.ssh/config" 2>/dev/null)" = "$HOME/.config/ssh/config" ] ||
     ln -sf "$HOME/.config/ssh/config" "$HOME/.ssh/config"
 
-# Install `mise` for Tooling
-curl https://mise.run | sh
-"$HOME/.local/bin/mise" trust && "$HOME/.local/bin/mise" install
+# Install Homebrew
+if ! command -v brew >/dev/null 2>&1; then
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+fi
+
+# Load brew into PATH (Apple Silicon, Intel, Linuxbrew)
+for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew "$HOME/.linuxbrew/bin/brew"; do
+    if [ -x "$candidate" ]; then
+        eval "$("$candidate" shellenv)"
+        break
+    fi
+done
+
+# Install brew packages (Brewfile skips cask/mas on Linux via OS.mac?)
+brew bundle --file="$REPO/Brewfile"
+
+# Install project-level tools via mise
+mise trust && mise install
 
 # Setup GitHub CLI Tool
 gh auth login -s admin:ssh_signing_key

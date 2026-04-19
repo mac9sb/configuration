@@ -1,11 +1,11 @@
 theme = light:Kanagawa Lotus,dark:Kanagawa Dragon
 background-opacity = 0.95
 background-blur = true
-macos-option-as-alt = true
 
 # Typography
-font-family = "SF Mono"
+font-family = "Liga SFMono Nerd Font"
 font-size = 11
+font-feature = +liga, +calt, +dlig
 
 # Padding
 window-padding-x = 16
@@ -14,6 +14,9 @@ window-padding-balance = true
 
 # SSH terminfo — auto-send terminfo to remote hosts
 shell-integration-features = ssh-env,ssh-terminfo
+
+# Keybindings
+macos-option-as-alt = true
 
 # Splits — navigate with Option+Arrow
 keybind = opt+h=goto_split:left
@@ -29,3 +32,6 @@ keybind = opt+shift+l=resize_split:right,10
 
 # Equalize splits
 keybind = opt+shift+e=equalize_splits
+
+# UK Keyboard Fix 
+keybind = opt+3=text:#

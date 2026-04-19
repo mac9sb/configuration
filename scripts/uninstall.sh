@@ -23,6 +23,11 @@ done
         fi
     }
 
+# Optionally clean up brew-managed packages before the Brewfile disappears
+if [ "${UNINSTALL_BREW:-0}" = "1" ] && command -v brew >/dev/null 2>&1; then
+    brew bundle cleanup --file="$HOME/Developer/configuration/Brewfile" --force
+fi
+
 # Remove cloned repository
 rm -rf "$HOME/Developer/configuration"
 

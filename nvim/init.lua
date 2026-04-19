@@ -64,12 +64,13 @@ vim.keymap.set("n", "<C-h>", "<C-w><C-h>", { desc = "Move focus left" })
 vim.keymap.set("n", "<C-l>", "<C-w><C-l>", { desc = "Move focus right" })
 vim.keymap.set("n", "<C-j>", "<C-w><C-j>", { desc = "Move focus down" })
 vim.keymap.set("n", "<C-k>", "<C-w><C-k>", { desc = "Move focus up" })
+vim.keymap.set("n", "<leader>u", vim.pack.update, { desc = "Update plugins" })
 
 -- Autocmds
 vim.api.nvim_create_autocmd("TextYankPost", {
 	group = vim.api.nvim_create_augroup("highlight-yank", { clear = true }),
 	callback = function()
-		(vim.hl or vim.highlight).on_yank()
+		vim.hl.on_yank()
 	end,
 })
 
@@ -245,6 +246,24 @@ vim.api.nvim_create_autocmd("LspAttach", {
 		map("<leader>cs", fzf.lsp_document_symbols, "Code symbols")
 
 		local client = vim.lsp.get_client_by_id(event.data.client_id)
+		if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_documentColor) then
+			vim.lsp.document_color.enable(true, event.buf)
+		end
+
+		if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_foldingRange) then
+			vim.wo.foldmethod = "expr"
+			vim.wo.foldexpr = "v:lua.vim.lsp.foldexpr()"
+		end
+
+		if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_inlayHint) then
+			map("<leader>ch", function()
+				vim.lsp.inlay_hint.enable(
+					not vim.lsp.inlay_hint.is_enabled({ bufnr = event.buf }),
+					{ bufnr = event.buf }
+				)
+			end, "Toggle inlay hints")
+		end
+
 		if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_documentHighlight) then
 			local group = vim.api.nvim_create_augroup("lsp-highlight", { clear = false })
 			vim.api.nvim_create_autocmd({ "CursorHold", "CursorHoldI" }, {

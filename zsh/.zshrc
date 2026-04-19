@@ -67,7 +67,7 @@ if [[ ! -f "${ZDOTDIR:-$HOME}/.zshrc.zwc" ]] || \
 fi
 
 # mise (activates managed tools onto PATH)
-eval "$("$HOME/.local/bin/mise" activate zsh)"
+eval "$(mise activate zsh)"
 
 # Prompt
 zinit ice as"command" from"gh-r" \
