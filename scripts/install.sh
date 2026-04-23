@@ -41,6 +41,15 @@ grep -q ZDOTDIR "$HOME/.zshenv" 2>/dev/null || {
     echo "export ZDOTDIR=\"$HOME/.config/zsh\"" >> "$HOME/.zshenv"
 }
 
+# Create Symbolic Link for Pi Models
+mkdir -p "$HOME/.pi/agent"
+pi_models_target="$REPO/pi/models.json"
+pi_models_link="$HOME/.pi/agent/models.json"
+if [ "$(readlink "$pi_models_link" 2>/dev/null)" != "$pi_models_target" ]; then
+    [ -e "$pi_models_link" ] && mv "$pi_models_link" "$pi_models_link.bak"
+    ln -sn "$pi_models_target" "$pi_models_link"
+fi
+
 # Generate an SSH Key
 if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
     mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
@@ -49,21 +58,28 @@ if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
 fi
 ln -sf "$HOME/.config/ssh/config" "$HOME/.ssh/config"
 
-# Install Homebrew
-if ! command -v brew >/dev/null 2>&1; then
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-fi
-
-# Load brew into PATH (Apple Silicon, Intel, Linuxbrew)
-for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew "$HOME/.linuxbrew/bin/brew"; do
-    if [ -x "$candidate" ]; then
-        eval "$("$candidate" shellenv)"
-        break
+# Install Homebrew and packages (macOS only)
+if [ "$MACOS" = true ]; then
+    if ! command -v brew >/dev/null 2>&1; then
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     fi
-done
 
-# Install brew packages (Brewfile skips cask/mas on Linux via OS.mac?)
-brew bundle --file="$REPO/Brewfile"
+    # Load brew into PATH (Apple Silicon or Intel)
+    for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [ -x "$candidate" ]; then
+            eval "$("$candidate" shellenv)"
+            break
+        fi
+    done
+
+    brew bundle --file="$REPO/Brewfile"
+else
+    # Install mise directly on Linux
+    if ! command -v mise >/dev/null 2>&1; then
+        curl https://mise.run | sh
+        export PATH="$HOME/.local/bin:$PATH"
+    fi
+fi
 
 # Install project-level tools via mise
 mise trust "$REPO/mise/config.toml" && mise install
@@ -96,10 +112,12 @@ for k, v in s.get('enabledPlugins', {}).items():
     fi
 fi
 
-# Setup GitHub CLI Tool
-gh auth status >/dev/null 2>&1 || gh auth login -s admin:ssh_signing_key
-if ! gh ssh-key list --json key,title 2>/dev/null | grep -Fq "$(cat "$HOME/.ssh/id_ed25519.pub")"; then
-    gh ssh-key add "$HOME/.ssh/id_ed25519.pub" --title "$(hostname)" --type signing
+# Setup GitHub CLI Tool (only if available)
+if command -v gh >/dev/null 2>&1; then
+    gh auth status >/dev/null 2>&1 || gh auth login -s admin:ssh_signing_key
+    if ! gh ssh-key list --json key,title 2>/dev/null | grep -Fq "$(cat "$HOME/.ssh/id_ed25519.pub")"; then
+        gh ssh-key add "$HOME/.ssh/id_ed25519.pub" --title "$(hostname)" --type signing
+    fi
 fi
 
 # Apply macOS Interface Customisation

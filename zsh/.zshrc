@@ -31,7 +31,7 @@ zinit light zsh-users/zsh-completions
 zinit light zsh-users/zsh-syntax-highlighting
 zinit light Aloxaf/fzf-tab
 
-zinit ice atload'ZSH_AUTOSUGGEST_STRATEGY=(history)'
+zinit ice wait"0" lucid atload"ZSH_AUTOSUGGEST_STRATEGY=(history)"
 zinit light zsh-users/zsh-autosuggestions
 
 # Completion
@@ -57,15 +57,36 @@ if [[ ! -f "${ZDOTDIR:-$HOME}/.zshrc.zwc" ]] || \
   zcompile "${ZDOTDIR:-$HOME}/.zshrc" 2>/dev/null
 fi
 
-# mise (activates managed tools onto PATH)
-eval "$(mise activate zsh)"
+# Cache directory for eval outputs — regenerated only when the source binary changes
+_zsh_cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
+mkdir -p "$_zsh_cache"
 
-# Shell integrations
-eval "$(fzf --zsh)"
-eval "$(zoxide init zsh)"
+_mise_init="$_zsh_cache/mise.zsh"
+if [[ ! -f "$_mise_init" || "$commands[mise]" -nt "$_mise_init" ]]; then
+  mise activate zsh > "$_mise_init"
+fi
+source "$_mise_init"
 
-# Prompt
-eval "$(oh-my-posh init zsh --config ${ZDOTDIR:-$HOME/.config/zsh}/omp.toml)"
+_fzf_init="$_zsh_cache/fzf.zsh"
+if [[ ! -f "$_fzf_init" || "$commands[fzf]" -nt "$_fzf_init" ]]; then
+  fzf --zsh > "$_fzf_init"
+fi
+source "$_fzf_init"
+
+_zoxide_init="$_zsh_cache/zoxide.zsh"
+if [[ ! -f "$_zoxide_init" || "$commands[zoxide]" -nt "$_zoxide_init" ]]; then
+  zoxide init zsh > "$_zoxide_init"
+fi
+source "$_zoxide_init"
+
+_omp_config="${ZDOTDIR:-$HOME/.config/zsh}/omp.toml"
+_omp_init="$_zsh_cache/omp.zsh"
+if [[ ! -f "$_omp_init" || "$commands[oh-my-posh]" -nt "$_omp_init" || "$_omp_config" -nt "$_omp_init" ]]; then
+  oh-my-posh init zsh --config "$_omp_config" > "$_omp_init"
+fi
+source "$_omp_init"
+unset _zsh_cache _mise_init _fzf_init _zoxide_init _omp_config _omp_init
+
 autoload -Uz add-zsh-hook
 _omp_prompt_newline() { print "" }
 add-zsh-hook precmd _omp_prompt_newline

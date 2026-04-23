@@ -12,6 +12,7 @@ vim.pack.add({
 	"https://github.com/j-hui/fidget.nvim",
 	-- Completion
 	"https://github.com/saghen/blink.cmp",
+	"https://github.com/supermaven-inc/supermaven-nvim",
 	-- Treesitter
 	"https://github.com/nvim-treesitter/nvim-treesitter",
 	-- File explorer & fuzzy finding
@@ -27,8 +28,11 @@ vim.pack.add({
 	"https://github.com/folke/which-key.nvim",
 	"https://github.com/folke/lazydev.nvim",
 	"https://github.com/folke/flash.nvim",
+	"https://github.com/MeanderingProgrammer/render-markdown.nvim",
 	-- Theme
 	"https://github.com/rebelot/kanagawa.nvim",
+	-- Embedded language LSP (e.g. bash/python inside mise task run blocks)
+	"https://github.com/jmbuhr/otter.nvim",
 })
 
 -- Options
@@ -75,9 +79,17 @@ vim.api.nvim_create_autocmd("TextYankPost", {
 })
 
 vim.api.nvim_create_autocmd("FileType", {
-	pattern = "markdown",
+	pattern = { "markdown", "typst" },
 	callback = function()
 		vim.opt_local.wrap = true
+		vim.opt_local.spell = true
+	end,
+})
+
+vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
+	pattern = "*.typ",
+	callback = function()
+		vim.bo.filetype = "typst"
 	end,
 })
 
@@ -96,11 +108,22 @@ require("kanagawa").setup({
 })
 vim.cmd.colorscheme("kanagawa")
 
-vim.api.nvim_set_hl(0, "SignColumn", { bg = "NONE" })
-if vim.o.background == "dark" then
+local function apply_hl_overrides()
+	-- Line numbers and sign column: fully transparent backgrounds
+	vim.api.nvim_set_hl(0, "SignColumn", { bg = "NONE" })
 	vim.api.nvim_set_hl(0, "LineNr", { bg = "NONE" })
 	vim.api.nvim_set_hl(0, "CursorLineNr", { bg = "NONE" })
+	-- CursorLine: subtle tint that reads as a faint highlight over any bg
+	if vim.o.background == "dark" then
+		vim.api.nvim_set_hl(0, "CursorLine", { bg = "#1f1f28", blend = 60 })
+	else
+		vim.api.nvim_set_hl(0, "CursorLine", { bg = "#e7e3d4", blend = 60 })
+	end
 end
+
+apply_hl_overrides()
+vim.api.nvim_create_autocmd("ColorScheme", { callback = apply_hl_overrides })
+
 vim.api.nvim_set_hl(0, "GitSignsAdd", { bg = "NONE" })
 vim.api.nvim_set_hl(0, "GitSignsChange", { bg = "NONE" })
 vim.api.nvim_set_hl(0, "GitSignsDelete", { bg = "NONE" })
@@ -116,6 +139,7 @@ vim.api.nvim_set_hl(0, "MiniStatuslineModeOther", { bg = "#7fb4ca", fg = "#18161
 vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { bg = "#7fb4ca", fg = "#181616" })
 
 -- UI
+require("vim._core.ui2").enable({})
 require("which-key").setup({
 	spec = {
 		{ "<leader>c", group = "Code" },
@@ -129,6 +153,7 @@ local projects = {
 	c = { path = "~/Developer/configuration", desc = "configuration" },
 	s = { path = "~/Developer/ssl", desc = "ssl" },
 	o = { path = "~/Developer/other", desc = "other" },
+	p = { path = "~/Developer/study/physics", desc = "physics" },
 }
 for key, proj in pairs(projects) do
 	vim.keymap.set("n", "<leader>p" .. key, function()
@@ -142,10 +167,20 @@ require("mini.surround").setup()
 require("mini.pairs").setup()
 require("mini.icons").setup()
 
+require("render-markdown").setup({
+	file_types = { "markdown" },
+})
+
 require("flash").setup()
-vim.keymap.set({ "n", "x", "o" }, "s", function() require("flash").jump() end, { desc = "Flash jump" })
-vim.keymap.set({ "n", "x", "o" }, "S", function() require("flash").treesitter() end, { desc = "Flash treesitter" })
-vim.keymap.set("o", "r", function() require("flash").remote() end, { desc = "Flash remote" })
+vim.keymap.set({ "n", "x", "o" }, "s", function()
+	require("flash").jump()
+end, { desc = "Flash jump" })
+vim.keymap.set({ "n", "x", "o" }, "S", function()
+	require("flash").treesitter()
+end, { desc = "Flash treesitter" })
+vim.keymap.set("o", "r", function()
+	require("flash").remote()
+end, { desc = "Flash remote" })
 
 local statusline = require("mini.statusline")
 statusline.setup({
@@ -217,6 +252,8 @@ vim.diagnostic.config({
 })
 
 -- Completion
+require("supermaven-nvim").setup({})
+
 require("blink.cmp").setup({
 	keymap = { preset = "default" },
 	appearance = { nerd_font_variant = "mono" },
@@ -252,12 +289,13 @@ vim.api.nvim_create_autocmd("LspAttach", {
 
 		local client = vim.lsp.get_client_by_id(event.data.client_id)
 		if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_documentColor) then
-			vim.lsp.document_color.enable(true, event.buf)
+			vim.lsp.document_color.enable(true, { bufnr = event.buf })
 		end
 
 		if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_foldingRange) then
 			vim.wo.foldmethod = "expr"
 			vim.wo.foldexpr = "v:lua.vim.lsp.foldexpr()"
+			vim.wo.foldlevel = 99
 		end
 
 		if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_inlayHint) then
@@ -287,8 +325,18 @@ vim.api.nvim_create_autocmd("LspAttach", {
 
 vim.lsp.config("*", { capabilities = require("blink.cmp").get_lsp_capabilities() })
 vim.lsp.config("lua_ls", { settings = { Lua = { completion = { callSnippet = "Replace" } } } })
+vim.lsp.config("tinymist", {
+	root_markers = { ".git", ".typst-root" },
+	settings = {
+		formatterMode = "typstyle",
+		formatterPrintWidth = 100,
+		exportPdf = "onSave",
+		semanticTokens = "disable",
+	},
+})
 vim.lsp.enable("eslint")
 vim.lsp.enable("sourcekit") -- Swift; not mason-managed, uses system Xcode toolchain
+vim.lsp.enable("tinymist")
 
 require("mason").setup()
 require("mason-tool-installer").setup({
@@ -302,6 +350,8 @@ require("mason-tool-installer").setup({
 		"css-lsp",
 		"eslint-lsp",
 		"prettier",
+		"taplo",
+		"tinymist",
 	},
 })
 require("mason-lspconfig").setup({ automatic_enable = true })
@@ -327,6 +377,25 @@ vim.api.nvim_create_autocmd("FileType", {
 		pcall(vim.treesitter.start)
 	end,
 })
+-- Activate otter.nvim LSP for embedded languages in mise task run blocks
+vim.api.nvim_create_autocmd("FileType", {
+	pattern = "toml",
+	group = vim.api.nvim_create_augroup("mise-otter", { clear = true }),
+	callback = function()
+		pcall(require("otter").activate)
+	end,
+})
+
+-- Teach Treesitter to treat mise config files as mise files.
+-- Matches: *mise*.toml filenames, OR config.toml inside a mise//.mise directory.
+vim.treesitter.query.add_predicate("is-mise?", function(_, _, bufnr, _)
+	local filepath = vim.api.nvim_buf_get_name(tonumber(bufnr) or 0)
+	local filename = vim.fn.fnamemodify(filepath, ":t")
+	return string.match(filename, ".*mise.*%.toml$") ~= nil
+		or string.match(filepath, "[/\\]%.?mise[/\\]") ~= nil
+end, { force = true, all = false })
+
+
 require("nvim-treesitter").setup({
 	ensure_installed = {
 		"bash",
@@ -342,6 +411,9 @@ require("nvim-treesitter").setup({
 		"query",
 		"regex",
 		"swift",
+		"toml",
+		"typst",
+		"kdl",
 		"tsx",
 		"typescript",
 		"vim",

@@ -18,6 +18,7 @@ if OS.mac?
 
   # Fonts
   cask "font-sf-mono-nerd-font-ligaturized"
+  cask "font-sf-pro"
 
   # Mac App Store
   mas "Compressor",     id: 424390742

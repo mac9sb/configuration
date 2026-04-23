@@ -1,8 +1,21 @@
 {
+  "collaboration_panel": {
+    "dock": "right",
+  },
   "agent": {
+    "dock": "left",
+    "default_profile": "ask",
+    "tool_permissions": {
+      "tools": {
+        "terminal": {
+          "default": "allow",
+        },
+      },
+    },
     "default_model": {
-      "provider": "google",
-      "model": "gemini-2.5-flash",
+      "effort": "high",
+      "provider": "zed.dev",
+      "model": "claude-sonnet-4-6",
       "enable_thinking": true,
     },
     "commit_message_model": {
@@ -27,6 +40,7 @@
   "buffer_font_size": 11,
   "diff_view_style": "unified",
   "git_panel": {
+    "dock": "right",
     "default_width": 300,
     "tree_view": true,
     "file_icons": true,
@@ -36,6 +50,7 @@
     "dock": "right",
   },
   "project_panel": {
+    "dock": "right",
     "default_width": 300,
   },
   "relative_line_numbers": "enabled",
