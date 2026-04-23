@@ -30,6 +30,7 @@
     },
   },
   "auto_install_extensions": {
+    "comment": true,
     "git-firefly": true,
     "kanagawa-themes": true,
     "lua": true,
