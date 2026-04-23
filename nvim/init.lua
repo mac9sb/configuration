@@ -11,7 +11,6 @@ vim.pack.add({
 	"https://github.com/WhoIsSethDaniel/mason-tool-installer.nvim",
 	"https://github.com/j-hui/fidget.nvim",
 	-- Completion
-	"https://github.com/saghen/blink.cmp",
 	"https://github.com/supermaven-inc/supermaven-nvim",
 	-- Treesitter
 	"https://github.com/nvim-treesitter/nvim-treesitter",
@@ -254,19 +253,6 @@ vim.diagnostic.config({
 -- Completion
 require("supermaven-nvim").setup({})
 
-require("blink.cmp").setup({
-	keymap = { preset = "default" },
-	appearance = { nerd_font_variant = "mono" },
-	completion = { documentation = { auto_show = false } },
-	sources = {
-		default = { "lsp", "path", "snippets", "lazydev" },
-		providers = { lazydev = { module = "lazydev.integrations.blink", score_offset = 100 } },
-	},
-	snippets = { preset = "default" },
-	fuzzy = { implementation = "lua" },
-	signature = { enabled = true },
-})
-
 -- LSP
 require("lazydev").setup({
 	library = { { path = "${3rd}/luv/library", words = { "vim%.uv" } } },
@@ -288,6 +274,10 @@ vim.api.nvim_create_autocmd("LspAttach", {
 		map("<leader>cs", fzf.lsp_document_symbols, "Code symbols")
 
 		local client = vim.lsp.get_client_by_id(event.data.client_id)
+		if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_completion) then
+			vim.lsp.completion.enable(true, client.id, event.buf, { autotrigger = true })
+		end
+
 		if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_documentColor) then
 			vim.lsp.document_color.enable(true, { bufnr = event.buf })
 		end
@@ -323,7 +313,6 @@ vim.api.nvim_create_autocmd("LspAttach", {
 	end,
 })
 
-vim.lsp.config("*", { capabilities = require("blink.cmp").get_lsp_capabilities() })
 vim.lsp.config("lua_ls", { settings = { Lua = { completion = { callSnippet = "Replace" } } } })
 vim.lsp.config("tinymist", {
 	root_markers = { ".git", ".typst-root" },
