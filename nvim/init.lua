@@ -78,17 +78,10 @@ vim.api.nvim_create_autocmd("TextYankPost", {
 })
 
 vim.api.nvim_create_autocmd("FileType", {
-	pattern = { "markdown", "typst" },
+	pattern = "markdown",
 	callback = function()
 		vim.opt_local.wrap = true
 		vim.opt_local.spell = true
-	end,
-})
-
-vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
-	pattern = "*.typ",
-	callback = function()
-		vim.bo.filetype = "typst"
 	end,
 })
 
@@ -314,18 +307,8 @@ vim.api.nvim_create_autocmd("LspAttach", {
 })
 
 vim.lsp.config("lua_ls", { settings = { Lua = { completion = { callSnippet = "Replace" } } } })
-vim.lsp.config("tinymist", {
-	root_markers = { ".git", ".typst-root" },
-	settings = {
-		formatterMode = "typstyle",
-		formatterPrintWidth = 100,
-		exportPdf = "onSave",
-		semanticTokens = "disable",
-	},
-})
 vim.lsp.enable("eslint")
 vim.lsp.enable("sourcekit") -- Swift; not mason-managed, uses system Xcode toolchain
-vim.lsp.enable("tinymist")
 
 require("mason").setup()
 require("mason-tool-installer").setup({
@@ -340,7 +323,6 @@ require("mason-tool-installer").setup({
 		"eslint-lsp",
 		"prettier",
 		"taplo",
-		"tinymist",
 	},
 })
 require("mason-lspconfig").setup({ automatic_enable = true })
@@ -401,7 +383,6 @@ require("nvim-treesitter").setup({
 		"regex",
 		"swift",
 		"toml",
-		"typst",
 		"kdl",
 		"tsx",
 		"typescript",
