@@ -31,8 +31,10 @@
   },
   "auto_install_extensions": {
     "git-firefly": true,
-    "pkl": true,
     "kanagawa-themes": true,
+    "lua": true,
+    "pkl": true,
+    "ruby": true,
     "swift": true,
     "toml": true,
   },

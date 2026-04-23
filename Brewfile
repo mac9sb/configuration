@@ -9,6 +9,7 @@ brew "zoxide"
 if OS.mac?
   # GUI apps
   cask "claude-code"
+  cask "codex"
   cask "crossover"
   cask "ghostty"
   cask "orbstack"
