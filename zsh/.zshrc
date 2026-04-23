@@ -43,13 +43,17 @@ zstyle ':completion:*' group-name ''
 zstyle ':completion:*:descriptions' format '[%d]'
 zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls --color $realpath'
 
+zmodload -F zsh/stat b:zstat 2>/dev/null
 autoload -Uz compinit
-if [[ ! -f "${ZDOTDIR:-$HOME}/.zcompdump" ]] || \
-   [[ $(( $(date +%s) - $(date -r "${ZDOTDIR:-$HOME}/.zcompdump" +%s) )) -gt 86400 ]]; then
-  compinit
-else
-  compinit -C
-fi
+{
+  local _zdump="${ZDOTDIR:-$HOME}/.zcompdump" _mtime=0
+  zstat -A _mtime +mtime "$_zdump" 2>/dev/null
+  if (( EPOCHSECONDS - _mtime > 86400 )); then
+    compinit
+  else
+    compinit -C
+  fi
+}
 
 # Compile zshrc for faster loading
 if [[ ! -f "${ZDOTDIR:-$HOME}/.zshrc.zwc" ]] || \
@@ -61,23 +65,15 @@ fi
 _zsh_cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
 mkdir -p "$_zsh_cache"
 
-_mise_init="$_zsh_cache/mise.zsh"
-if [[ ! -f "$_mise_init" || "$commands[mise]" -nt "$_mise_init" ]]; then
-  mise activate zsh > "$_mise_init"
-fi
-source "$_mise_init"
-
-_fzf_init="$_zsh_cache/fzf.zsh"
-if [[ ! -f "$_fzf_init" || "$commands[fzf]" -nt "$_fzf_init" ]]; then
-  fzf --zsh > "$_fzf_init"
-fi
-source "$_fzf_init"
-
-_zoxide_init="$_zsh_cache/zoxide.zsh"
-if [[ ! -f "$_zoxide_init" || "$commands[zoxide]" -nt "$_zoxide_init" ]]; then
-  zoxide init zsh > "$_zoxide_init"
-fi
-source "$_zoxide_init"
+_zsh_init_cached() {
+  local name="$1" cache="$_zsh_cache/$1.zsh"
+  shift
+  [[ ! -f "$cache" || "$commands[$name]" -nt "$cache" ]] && "$@" > "$cache"
+  source "$cache"
+}
+_zsh_init_cached mise mise activate zsh
+_zsh_init_cached fzf fzf --zsh
+_zsh_init_cached zoxide zoxide init zsh
 
 _omp_config="${ZDOTDIR:-$HOME/.config/zsh}/omp.toml"
 _omp_init="$_zsh_cache/omp.zsh"
@@ -89,7 +85,7 @@ unset _zsh_cache _mise_init _fzf_init _zoxide_init _omp_config _omp_init
 
 autoload -Uz add-zsh-hook
 _omp_prompt_newline() { print "" }
-add-zsh-hook precmd _omp_prompt_newline
+(( ${precmd_functions[(I)_omp_prompt_newline]} )) || add-zsh-hook precmd _omp_prompt_newline
 
 # Local overrides
 [[ -f ${ZDOTDIR:-$HOME}/.zshrc.local ]] && source ${ZDOTDIR:-$HOME}/.zshrc.local

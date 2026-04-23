@@ -4,16 +4,15 @@ set -e
 MACOS=false
 [ "$(uname)" = "Darwin" ] && MACOS=true
 
-# Remove symlinks
+REPO="$HOME/Developer/configuration"
+
+# Remove symlinks and restore backups
 for dir in ghostty git mise nvim ssh vim zed zsh; do
     rm -f "$HOME/.config/$dir"
+    [ -e "$HOME/.config/$dir.bak" ] && mv "$HOME/.config/$dir.bak" "$HOME/.config/$dir"
 done
 rm -f "$HOME/.ssh/config"
 
-# Restore backups
-for dir in ghostty git mise nvim ssh vim zed zsh; do
-    [ -e "$HOME/.config/$dir.bak" ] && mv "$HOME/.config/$dir.bak" "$HOME/.config/$dir"
-done
 [ -f "$HOME/.zshenv.bak" ] && mv "$HOME/.zshenv.bak" "$HOME/.zshenv" ||
     {
         if [ -f "$HOME/.zshenv" ]; then
@@ -25,11 +24,11 @@ done
 
 # Optionally clean up brew-managed packages before the Brewfile disappears
 if [ "${UNINSTALL_BREW:-0}" = "1" ] && command -v brew >/dev/null 2>&1; then
-    brew bundle cleanup --file="$HOME/Developer/configuration/Brewfile" --force
+    brew bundle cleanup --file="$REPO/Brewfile" --force
 fi
 
 # Remove cloned repository
-rm -rf "$HOME/Developer/configuration"
+rm -rf "$REPO"
 
 if [ "$MACOS" = true ]; then
     # Revert TouchID for sudo

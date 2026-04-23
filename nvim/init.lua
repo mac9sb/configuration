@@ -30,7 +30,6 @@ vim.pack.add({
 	"https://github.com/MeanderingProgrammer/render-markdown.nvim",
 	-- Theme
 	"https://github.com/rebelot/kanagawa.nvim",
-	-- Embedded language LSP (e.g. bash/python inside mise task run blocks)
 	"https://github.com/jmbuhr/otter.nvim",
 })
 
@@ -101,34 +100,34 @@ require("kanagawa").setup({
 vim.cmd.colorscheme("kanagawa")
 
 local function apply_hl_overrides()
-	-- Line numbers and sign column: fully transparent backgrounds
 	vim.api.nvim_set_hl(0, "SignColumn", { bg = "NONE" })
 	vim.api.nvim_set_hl(0, "LineNr", { bg = "NONE" })
 	vim.api.nvim_set_hl(0, "CursorLineNr", { bg = "NONE" })
-	-- CursorLine: subtle tint that reads as a faint highlight over any bg
+	-- transparent = true in kanagawa lets the terminal bg show through;
+	-- CursorLine needs a manual tint to remain visible over any background
 	if vim.o.background == "dark" then
 		vim.api.nvim_set_hl(0, "CursorLine", { bg = "#1f1f28", blend = 60 })
 	else
 		vim.api.nvim_set_hl(0, "CursorLine", { bg = "#e7e3d4", blend = 60 })
 	end
+	for _, hl in ipairs({
+		"GitSignsAdd", "GitSignsChange", "GitSignsDelete",
+		"GitSignsTopdelete", "GitSignsChangedelete", "GitSignsUntracked",
+	}) do
+		vim.api.nvim_set_hl(0, hl, { bg = "NONE" })
+	end
+	local fg, blue = "#181616", "#7fb4ca"
+	vim.api.nvim_set_hl(0, "MiniStatuslineModeNormal", { bg = blue, fg = fg, bold = true })
+	vim.api.nvim_set_hl(0, "MiniStatuslineModeInsert", { bg = "#98bb6c", fg = fg, bold = true })
+	vim.api.nvim_set_hl(0, "MiniStatuslineModeVisual", { bg = "#957fb8", fg = fg, bold = true })
+	vim.api.nvim_set_hl(0, "MiniStatuslineModeReplace", { bg = "#c4746e", fg = fg, bold = true })
+	vim.api.nvim_set_hl(0, "MiniStatuslineModeCommand", { bg = "#c4b28a", fg = fg, bold = true })
+	vim.api.nvim_set_hl(0, "MiniStatuslineModeOther", { bg = blue, fg = fg, bold = true })
+	vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { bg = blue, fg = fg })
 end
 
 apply_hl_overrides()
 vim.api.nvim_create_autocmd("ColorScheme", { callback = apply_hl_overrides })
-
-vim.api.nvim_set_hl(0, "GitSignsAdd", { bg = "NONE" })
-vim.api.nvim_set_hl(0, "GitSignsChange", { bg = "NONE" })
-vim.api.nvim_set_hl(0, "GitSignsDelete", { bg = "NONE" })
-vim.api.nvim_set_hl(0, "GitSignsTopdelete", { bg = "NONE" })
-vim.api.nvim_set_hl(0, "GitSignsChangedelete", { bg = "NONE" })
-vim.api.nvim_set_hl(0, "GitSignsUntracked", { bg = "NONE" })
-vim.api.nvim_set_hl(0, "MiniStatuslineModeNormal", { bg = "#7fb4ca", fg = "#181616", bold = true })
-vim.api.nvim_set_hl(0, "MiniStatuslineModeInsert", { bg = "#98bb6c", fg = "#181616", bold = true })
-vim.api.nvim_set_hl(0, "MiniStatuslineModeVisual", { bg = "#957fb8", fg = "#181616", bold = true })
-vim.api.nvim_set_hl(0, "MiniStatuslineModeReplace", { bg = "#c4746e", fg = "#181616", bold = true })
-vim.api.nvim_set_hl(0, "MiniStatuslineModeCommand", { bg = "#c4b28a", fg = "#181616", bold = true })
-vim.api.nvim_set_hl(0, "MiniStatuslineModeOther", { bg = "#7fb4ca", fg = "#181616", bold = true })
-vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { bg = "#7fb4ca", fg = "#181616" })
 
 -- UI
 require("vim._core.ui2").enable({})
@@ -267,21 +266,23 @@ vim.api.nvim_create_autocmd("LspAttach", {
 		map("<leader>cs", fzf.lsp_document_symbols, "Code symbols")
 
 		local client = vim.lsp.get_client_by_id(event.data.client_id)
-		if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_completion) then
+		if not client then return end
+
+		if client:supports_method(vim.lsp.protocol.Methods.textDocument_completion) then
 			vim.lsp.completion.enable(true, client.id, event.buf, { autotrigger = true })
 		end
 
-		if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_documentColor) then
+		if client:supports_method(vim.lsp.protocol.Methods.textDocument_documentColor) then
 			vim.lsp.document_color.enable(true, { bufnr = event.buf })
 		end
 
-		if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_foldingRange) then
+		if client:supports_method(vim.lsp.protocol.Methods.textDocument_foldingRange) then
 			vim.wo.foldmethod = "expr"
 			vim.wo.foldexpr = "v:lua.vim.lsp.foldexpr()"
 			vim.wo.foldlevel = 99
 		end
 
-		if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_inlayHint) then
+		if client:supports_method(vim.lsp.protocol.Methods.textDocument_inlayHint) then
 			map("<leader>ch", function()
 				vim.lsp.inlay_hint.enable(
 					not vim.lsp.inlay_hint.is_enabled({ bufnr = event.buf }),
@@ -290,17 +291,26 @@ vim.api.nvim_create_autocmd("LspAttach", {
 			end, "Toggle inlay hints")
 		end
 
-		if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_documentHighlight) then
-			local group = vim.api.nvim_create_augroup("lsp-highlight", { clear = false })
+		if client:supports_method(vim.lsp.protocol.Methods.textDocument_documentHighlight) then
+			local hl_group = vim.api.nvim_create_augroup("lsp-highlight-" .. event.buf, { clear = true })
 			vim.api.nvim_create_autocmd({ "CursorHold", "CursorHoldI" }, {
 				buffer = event.buf,
-				group = group,
+				group = hl_group,
 				callback = vim.lsp.buf.document_highlight,
 			})
 			vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
 				buffer = event.buf,
-				group = group,
+				group = hl_group,
 				callback = vim.lsp.buf.clear_references,
+			})
+			vim.api.nvim_create_autocmd("LspDetach", {
+				buffer = event.buf,
+				group = vim.api.nvim_create_augroup("lsp-attach", { clear = false }),
+				once = true,
+				callback = function()
+					vim.lsp.buf.clear_references()
+					pcall(vim.api.nvim_del_augroup_by_name, "lsp-highlight-" .. event.buf)
+				end,
 			})
 		end
 	end,
@@ -348,7 +358,6 @@ vim.api.nvim_create_autocmd("FileType", {
 		pcall(vim.treesitter.start)
 	end,
 })
--- Activate otter.nvim LSP for embedded languages in mise task run blocks
 vim.api.nvim_create_autocmd("FileType", {
 	pattern = "toml",
 	group = vim.api.nvim_create_augroup("mise-otter", { clear = true }),
@@ -357,7 +366,6 @@ vim.api.nvim_create_autocmd("FileType", {
 	end,
 })
 
--- Teach Treesitter to treat mise config files as mise files.
 -- Matches: *mise*.toml filenames, OR config.toml inside a mise//.mise directory.
 vim.treesitter.query.add_predicate("is-mise?", function(_, _, bufnr, _)
 	local filepath = vim.api.nvim_buf_get_name(tonumber(bufnr) or 0)

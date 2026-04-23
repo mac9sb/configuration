@@ -23,16 +23,18 @@ if [ ! -d "$REPO" ]; then
     git clone --single-branch https://github.com/mac9sb/configuration "$REPO"
 fi
 
+# Create a symlink, backing up any existing target first
+make_link() {
+    local src="$1" target="$2"
+    [ "$(readlink "$target" 2>/dev/null)" = "$src" ] && return
+    [ -e "$target" ] && mv "$target" "$target.bak"
+    ln -sn "$src" "$target"
+}
+
 # Create Symbolic Links to Configuration Files
 mkdir -p "$HOME/.config"
 for dir in ghostty git mise nvim ssh vim zed zsh; do
-    target="$HOME/.config/$dir"
-    src="$REPO/$dir"
-    if [ "$(readlink "$target" 2>/dev/null)" = "$src" ]; then
-        continue
-    fi
-    [ -e "$target" ] && mv "$target" "$target.bak"
-    ln -sn "$src" "$target"
+    make_link "$REPO/$dir" "$HOME/.config/$dir"
 done
 
 # Point ZSH to Custom Configuration Location
@@ -43,12 +45,7 @@ grep -q ZDOTDIR "$HOME/.zshenv" 2>/dev/null || {
 
 # Create Symbolic Link for Pi Models
 mkdir -p "$HOME/.pi/agent"
-pi_models_target="$REPO/pi/models.json"
-pi_models_link="$HOME/.pi/agent/models.json"
-if [ "$(readlink "$pi_models_link" 2>/dev/null)" != "$pi_models_target" ]; then
-    [ -e "$pi_models_link" ] && mv "$pi_models_link" "$pi_models_link.bak"
-    ln -sn "$pi_models_target" "$pi_models_link"
-fi
+make_link "$REPO/pi/models.json" "$HOME/.pi/agent/models.json"
 
 # Generate an SSH Key
 if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
@@ -56,7 +53,7 @@ if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
     ssh-keygen -t ed25519 -C "maclong9@icloud.com" \
         -f "$HOME/.ssh/id_ed25519" -N ""
 fi
-ln -sf "$HOME/.config/ssh/config" "$HOME/.ssh/config"
+make_link "$HOME/.config/ssh/config" "$HOME/.ssh/config"
 
 # Install Homebrew and packages (macOS only)
 if [ "$MACOS" = true ]; then
@@ -87,25 +84,21 @@ mise trust "$REPO/mise/config.toml" && mise install
 # Claude Code configuration
 mkdir -p "$HOME/.claude"
 for file in CLAUDE.md settings.json; do
-    target="$HOME/.claude/$file"
-    src="$REPO/claude/$file"
-    if [ "$(readlink "$target" 2>/dev/null)" != "$src" ]; then
-        [ -e "$target" ] && mv "$target" "$target.bak"
-        ln -sn "$src" "$target"
-    fi
+    make_link "$REPO/claude/$file" "$HOME/.claude/$file"
 done
 
 # Install enabled Claude plugins
 if command -v claude >/dev/null 2>&1; then
     if claude plugins list >/dev/null 2>&1; then
         python3 -c "
-import json
-with open('$REPO/claude/settings.json') as f:
+import json, sys
+with open(sys.argv[1]) as f:
     s = json.load(f)
 for k, v in s.get('enabledPlugins', {}).items():
-    if v: print(k)
-" | while IFS= read -r plugin; do
-            claude plugins install "\$plugin" 2>/dev/null || true
+    if v:
+        print(k)
+" "$REPO/claude/settings.json" | while IFS= read -r plugin; do
+            claude plugins install "$plugin" 2>/dev/null || true
         done
     else
         printf '%s\n' "Claude not authenticated — run 'claude /login' then re-run this script to install plugins"
@@ -152,6 +145,7 @@ if [ "$MACOS" = true ]; then
     defaults write com.apple.dock tilesize -int 54
     defaults write com.apple.dock magnification -bool true
     defaults write com.apple.dock largesize -int 73
+    defaults write com.apple.dock mru-spaces -bool false
     killall Dock
 
     defaults write com.apple.menuextra.clock ShowDate -int 0
@@ -167,7 +161,6 @@ if [ "$MACOS" = true ]; then
     killall ControlCenter 2>/dev/null || true
     killall SystemUIServer 2>/dev/null || true
 
-    defaults write com.apple.dock mru-spaces -bool false
     defaults write com.apple.WindowManager GloballyEnabled -bool true
     defaults write com.apple.WindowManager EnableTiledWindowMargins -bool true
     defaults write com.apple.AppleMultitouchTrackpad TrackpadThreeFingerDrag -bool true
