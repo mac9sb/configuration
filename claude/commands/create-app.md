@@ -8,9 +8,11 @@ Scaffold a new Deno app using the mac9sb stack. Arguments: `$ARGUMENTS`
 
 ## Stack
 
-- **`@mac9sb/deno-foundation`** (JSR) — auth, KV, routing, logging, Stripe
+- **`@mac9sb/deno-foundation`** (JSR) — auth, KV, routing, logging, static files, Stripe
 - **`~/Developer/deno-template`** — canonical template to copy from
-- **Key pattern**: `mountAuthRoutes(router, kv, opts)` handles all `/auth/*` and `/api/session` routes; the app only adds domain routes
+- **Key pattern**: `mountAuthRoutes(router, kv, opts)` handles all `/auth/*` and `/api/session`
+  routes; `createStaticHandler` handles MIME serving and locale cookies; `mountStripeRoutes` adds
+  billing routes — the app only adds domain-specific routes
 
 ## Steps
 
@@ -18,7 +20,7 @@ Scaffold a new Deno app using the mac9sb stack. Arguments: `$ARGUMENTS`
 
 From `$ARGUMENTS`:
 - First non-flag token = slug name (e.g. `my-saas`)
-- `--no-stripe` flag = omit Stripe env vars and note in README
+- `--no-stripe` flag = leave Stripe as commented-out instructions, omit Stripe env vars
 - Derive display name: capitalise each word, replace hyphens/underscores with spaces
   (e.g. `my-saas` → `My Saas`, `notetaker` → `Notetaker`)
 
@@ -26,7 +28,8 @@ If no name is provided, stop and ask for one.
 
 ### 2. Verify the template exists
 
-Check that `~/Developer/deno-template/` exists and has `index.ts`. If not, stop and tell the user to clone it from `mac9sb/deno-template`.
+Check that `~/Developer/deno-template/` exists and has `index.ts`. If not, stop and tell the user
+to clone it from `mac9sb/deno-template`.
 
 ### 3. Create project directory
 
@@ -58,9 +61,28 @@ Use `sed -i ''` or Edit tool — whichever is cleaner for each file.
 
 ### 6. Update deno.json
 
-The copied `deno.json` already has the right foundation import. No changes needed unless `--no-stripe` was passed (see step 7).
+The copied `deno.json` already has the right foundation import. No changes needed.
 
-### 7. Create .env.example
+### 7. Handle Stripe
+
+The copied `index.ts` contains a commented-out Stripe block:
+
+```typescript
+// Stripe: import { mountStripeRoutes } from "@mac9sb/deno-foundation"
+// and call mountStripeRoutes(router, kv, { baseUrl: BASE_URL }) to add billing routes.
+```
+
+**If `--no-stripe` was NOT passed** (Stripe is included):
+
+1. Add `mountStripeRoutes` to the existing import destructure at the top of `index.ts`.
+2. Replace the comment block with the actual call:
+   ```typescript
+   mountStripeRoutes(router, kv, { baseUrl: BASE_URL });
+   ```
+
+**If `--no-stripe` was passed**: leave the comment as-is — it documents how to add Stripe later.
+
+### 8. Create .env.example
 
 Write a `.env.example` in the project root:
 
@@ -76,16 +98,6 @@ If `--no-stripe` was **not** passed, also add:
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 ```
-
-### 8. Handle --no-stripe
-
-If `--no-stripe`:
-- Do not add Stripe keys to `.env.example` (done above)
-- Add a comment to `index.ts` after `mountAuthRoutes`:
-  ```typescript
-  // Stripe: import { mountStripeRoutes } from "@mac9sb/deno-foundation"
-  // and call mountStripeRoutes(router, kv, { baseUrl: BASE_URL }) to add billing routes.
-  ```
 
 ### 9. Update README
 
@@ -124,6 +136,11 @@ deployctl deploy --project=<slug> index.ts
 Set env vars in the Deno Deploy dashboard.
 ```
 
+If Stripe is included, add to the env vars table:
+
+| `STRIPE_SECRET_KEY` | Yes | Stripe secret key |
+| `STRIPE_WEBHOOK_SECRET` | Yes | Stripe webhook signing secret |
+
 ### 10. Initialise git
 
 ```bash
@@ -140,15 +157,12 @@ If yes:
 gh repo create mac9sb/<slug> --private --source=. --remote=origin --push
 ```
 
-Then tell the user to:
-1. Go to jsr.io → `@mac9sb/<slug>` settings → link the GitHub repo for OIDC publishing (only needed if this will be a JSR package)
-
 ### 12. Print summary
 
 ```
 ✓ Created ~/Developer/<slug>
   Display name : <Display Name>
-  Foundation   : @mac9sb/deno-foundation@^0.1.4
+  Foundation   : @mac9sb/deno-foundation@^0.1.5
   Stripe       : included / not included
   GitHub repo  : mac9sb/<slug> / not created
 
