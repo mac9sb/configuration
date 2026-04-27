@@ -13,3 +13,7 @@ zsh/*
 !zsh/.zprofile
 !zsh/.zshrc
 !zsh/omp.toml
+
+pi/*
+!pi/agent/AGENTS.md
+!pi/agent/skills/
