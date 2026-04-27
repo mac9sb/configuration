@@ -4,16 +4,14 @@ brew "gh"
 brew "mise"
 brew "neovim"
 brew "oh-my-posh"
+brew "pi-coding-agent"
 brew "zoxide"
 
 if OS.mac?
   # GUI apps
-  cask "claude-code"
-  cask "codex"
   cask "crossover"
   cask "ghostty"
   cask "orbstack"
-  cask "screen-studio"
   cask "steam"
   cask "zed"
 
