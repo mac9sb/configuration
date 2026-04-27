@@ -28,9 +28,6 @@ vim.pack.add({
     "https://github.com/folke/lazydev.nvim",
     "https://github.com/folke/flash.nvim",
     "https://github.com/MeanderingProgrammer/render-markdown.nvim",
-    -- Theme
-    "https://github.com/rebelot/kanagawa.nvim",
-    "https://github.com/jmbuhr/otter.nvim",
 })
 
 -- Options
@@ -93,30 +90,28 @@ vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold", "CursorHo
 })
 
 -- Theme
-require("kanagawa").setup({
-    transparent = true,
-    background = { dark = "dragon", light = "lotus" },
-})
-vim.cmd.colorscheme("kanagawa")
-
 local function apply_hl_overrides()
     vim.api.nvim_set_hl(0, "SignColumn", { bg = "NONE" })
     vim.api.nvim_set_hl(0, "LineNr", { bg = "NONE" })
     vim.api.nvim_set_hl(0, "CursorLineNr", { bg = "NONE" })
-    -- transparent = true in kanagawa lets the terminal bg show through;
-    -- CursorLine needs a manual tint to remain visible over any background
-    if vim.o.background == "dark" then
-        vim.api.nvim_set_hl(0, "CursorLine", { bg = "#1f1f28", blend = 60 })
-    else
-        vim.api.nvim_set_hl(0, "CursorLine", { bg = "#e7e3d4", blend = 60 })
-    end
+    -- transparent background for all panels, popups and buffers
+    vim.api.nvim_set_hl(0, "Normal", { bg = "NONE" })
+    vim.api.nvim_set_hl(0, "NormalFloat", { bg = "NONE" })
+    vim.api.nvim_set_hl(0, "NormalNC", { bg = "NONE" })
+    vim.api.nvim_set_hl(0, "NormalSB", { bg = "NONE" })
+    vim.api.nvim_set_hl(0, "NormalFloat", { bg = "NONE" })
+    vim.api.nvim_set_hl(0, "NormalNC", { bg = "NONE" })
+    vim.api.nvim_set_hl(0, "NormalSB", { bg = "NONE" })
     for _, hl in ipairs({
-        "GitSignsAdd", "GitSignsChange", "GitSignsDelete",
-        "GitSignsTopdelete", "GitSignsChangedelete", "GitSignsUntracked",
+        "GitSignsAdd",
+        "GitSignsChange",
+        "GitSignsDelete",
+        "GitSignsTopdelete",
+        "GitSignsChangedelete",
+        "GitSignsUntracked",
     }) do
         vim.api.nvim_set_hl(0, hl, { bg = "NONE" })
     end
-    local fg, blue = "#181616", "#7fb4ca"
     vim.api.nvim_set_hl(0, "MiniStatuslineModeNormal", { bg = blue, fg = fg, bold = true })
     vim.api.nvim_set_hl(0, "MiniStatuslineModeInsert", { bg = "#98bb6c", fg = fg, bold = true })
     vim.api.nvim_set_hl(0, "MiniStatuslineModeVisual", { bg = "#957fb8", fg = fg, bold = true })
@@ -266,7 +261,9 @@ vim.api.nvim_create_autocmd("LspAttach", {
         map("<leader>cs", fzf.lsp_document_symbols, "Code symbols")
 
         local client = vim.lsp.get_client_by_id(event.data.client_id)
-        if not client then return end
+        if not client then
+            return
+        end
 
         if client:supports_method(vim.lsp.protocol.Methods.textDocument_completion) then
             vim.lsp.completion.enable(true, client.id, event.buf, { autotrigger = true })
@@ -370,10 +367,8 @@ vim.api.nvim_create_autocmd("FileType", {
 vim.treesitter.query.add_predicate("is-mise?", function(_, _, bufnr, _)
     local filepath = vim.api.nvim_buf_get_name(tonumber(bufnr) or 0)
     local filename = vim.fn.fnamemodify(filepath, ":t")
-    return string.match(filename, ".*mise.*%.toml$") ~= nil
-        or string.match(filepath, "[/\\]%.?mise[/\\]") ~= nil
+    return string.match(filename, ".*mise.*%.toml$") ~= nil or string.match(filepath, "[/\\]%.?mise[/\\]") ~= nil
 end, { force = true, all = false })
-
 
 require("nvim-treesitter").setup({
     ensure_installed = {
