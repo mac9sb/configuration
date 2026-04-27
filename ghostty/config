@@ -1,4 +1,4 @@
-theme = light:Kanagawa Lotus,dark:Kanagawa Dragon
+theme = light:vitesse-light-soft,dark:vitesse-dark
 background-opacity = 0.90
 background-blur = true
 
@@ -33,5 +33,5 @@ keybind = opt+shift+l=resize_split:right,10
 # Equalize splits
 keybind = opt+shift+e=equalize_splits
 
-# UK Keyboard Fix 
+# UK Keyboard Fix
 keybind = opt+3=text:#
