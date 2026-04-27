@@ -43,9 +43,8 @@ grep -q ZDOTDIR "$HOME/.zshenv" 2>/dev/null || {
     echo "export ZDOTDIR=\"$HOME/.config/zsh\"" >> "$HOME/.zshenv"
 }
 
-# Create Symbolic Link for Pi Models
-mkdir -p "$HOME/.pi/agent"
-make_link "$REPO/pi/models.json" "$HOME/.pi/agent/models.json"
+# Create Symlink for Pi Agent Home Directory
+make_link "$REPO/pi" "$HOME/.pi"
 
 # Generate an SSH Key
 if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
@@ -81,29 +80,7 @@ fi
 # Install project-level tools via mise
 mise trust "$REPO/mise/config.toml" && mise install
 
-# Claude Code configuration
-mkdir -p "$HOME/.claude"
-for file in CLAUDE.md settings.json; do
-    make_link "$REPO/claude/$file" "$HOME/.claude/$file"
-done
 
-# Install enabled Claude plugins
-if command -v claude >/dev/null 2>&1; then
-    if claude plugins list >/dev/null 2>&1; then
-        python3 -c "
-import json, sys
-with open(sys.argv[1]) as f:
-    s = json.load(f)
-for k, v in s.get('enabledPlugins', {}).items():
-    if v:
-        print(k)
-" "$REPO/claude/settings.json" | while IFS= read -r plugin; do
-            claude plugins install "$plugin" 2>/dev/null || true
-        done
-    else
-        printf '%s\n' "Claude not authenticated — run 'claude /login' then re-run this script to install plugins"
-    fi
-fi
 
 # Setup GitHub CLI Tool (only if available)
 if command -v gh >/dev/null 2>&1; then
