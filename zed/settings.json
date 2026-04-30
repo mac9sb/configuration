@@ -1,4 +1,10 @@
 {
+  "collaboration_panel": {
+    "default_width": 280.0
+  },
+  "outline_panel": {
+    "default_width": 280.0
+  },
   "agent": {
     "sidebar_side": "left",
     "dock": "left",

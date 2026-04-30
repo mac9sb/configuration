@@ -1,6 +1,6 @@
 # CLI tools
 brew "fzf"
-brew "gh"
+brew "mas"
 brew "mise"
 brew "neovim"
 brew "oh-my-posh"
@@ -31,4 +31,5 @@ if OS.mac?
   mas "Pages",          id: 361309726
   mas "Pixelmator Pro", id: 1289583905
   mas "Wipr 2",         id: 1662217862
+  mas "Xcode",          id: 497799835
 end

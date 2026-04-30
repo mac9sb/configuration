@@ -4,6 +4,9 @@
 
 - Optimize for useful progress with minimal context use. Keep reasoning concise,
   avoid repetition, and preserve context budget as a scarce resource.
+- Default to the shortest response that fully answers the user's question.
+  Do not restate the same point in multiple phrasings unless the user asks for
+  elaboration, comparison, or a more detailed explanation.
 - Prefer existing project conventions over generic preferences. Match naming,
   structure, testing style, and architecture before introducing new patterns.
 - Ask clarifying questions when requirements, scope, or risk are unclear. Do not

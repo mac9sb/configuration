@@ -16,12 +16,9 @@ if [ "$MACOS" = true ]; then
     fi
 fi
 
-# Clone Configuration Repository
-REPO="$HOME/Developer/configuration"
-mkdir -p "$HOME/Developer"
-if [ ! -d "$REPO" ]; then
-    git clone --single-branch https://github.com/mac9sb/configuration "$REPO"
-fi
+# Resolve Configuration Repository
+SCRIPT_DIR=${0:A:h}
+REPO=${SCRIPT_DIR:h}
 
 # Create a symlink, backing up any existing target first
 make_link() {
@@ -57,7 +54,8 @@ make_link "$HOME/.config/ssh/config" "$HOME/.ssh/config"
 # Install Homebrew and packages (macOS only)
 if [ "$MACOS" = true ]; then
     if ! command -v brew >/dev/null 2>&1; then
-        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        printf '%s\n' "Homebrew is required but not installed." >&2
+        exit 1
     fi
 
     # Load brew into PATH (Apple Silicon or Intel)
@@ -81,14 +79,6 @@ fi
 mise trust "$REPO/mise/config.toml" && mise install
 
 
-
-# Setup GitHub CLI Tool (only if available)
-if command -v gh >/dev/null 2>&1; then
-    gh auth status >/dev/null 2>&1 || gh auth login -s admin:ssh_signing_key
-    if ! gh ssh-key list --json key,title 2>/dev/null | grep -Fq "$(cat "$HOME/.ssh/id_ed25519.pub")"; then
-        gh ssh-key add "$HOME/.ssh/id_ed25519.pub" --title "$(hostname)" --type signing
-    fi
-fi
 
 # Apply macOS Interface Customisation
 if [ "$MACOS" = true ]; then

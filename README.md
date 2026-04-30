@@ -3,7 +3,7 @@
 ## Quickstart
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/mac9sb/configuration/main/scripts/install.sh | sh
+./scripts/install.sh
 ```
 
 ## Uninstall

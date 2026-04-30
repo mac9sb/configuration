@@ -18,21 +18,19 @@ bindkey '^n' history-search-forward
 export EDITOR=nvim
 export VISUAL=zed
 
-# Zinit bootstrap
+# Zinit
 ZINIT_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/zinit/zinit.git"
-if [[ ! -d $ZINIT_HOME/.git ]]; then
-  mkdir -p ${ZINIT_HOME:h}
-  git clone --depth=1 https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
+if [[ -f "$ZINIT_HOME/zinit.zsh" ]]; then
+  source "$ZINIT_HOME/zinit.zsh"
+
+  # Plugins
+  zinit light zsh-users/zsh-completions
+  zinit light zsh-users/zsh-syntax-highlighting
+  zinit light Aloxaf/fzf-tab
+
+  zinit ice wait"0" lucid atload"ZSH_AUTOSUGGEST_STRATEGY=(history)"
+  zinit light zsh-users/zsh-autosuggestions
 fi
-source "$ZINIT_HOME/zinit.zsh"
-
-# Plugins
-zinit light zsh-users/zsh-completions
-zinit light zsh-users/zsh-syntax-highlighting
-zinit light Aloxaf/fzf-tab
-
-zinit ice wait"0" lucid atload"ZSH_AUTOSUGGEST_STRATEGY=(history)"
-zinit light zsh-users/zsh-autosuggestions
 
 # Completion
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'
