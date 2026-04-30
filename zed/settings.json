@@ -33,12 +33,13 @@
     "comment": true,
     "git-firefly": true,
     "kanagawa-themes": true,
+    "lua": true,
     "ruby": true,
     "swift": true,
     "toml": true,
   },
   "buffer_font_family": "Liga SFMono Nerd Font",
-  "buffer_font_size": 11,
+  "buffer_font_size": 11.0,
   "cli_default_open_behavior": "existing_window",
   "diff_view_style": "unified",
   "git_panel": {
@@ -50,6 +51,7 @@
     },
   },
   "project_panel": {
+    "dock": "right",
     "default_width": 280,
   },
   "relative_line_numbers": "enabled",

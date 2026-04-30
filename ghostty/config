@@ -1,4 +1,4 @@
-theme = light:vitesse-light-soft,dark:vitesse-dark
+theme = light:Kanagawa Lotus,dark:Kanagawa Dragon
 background-opacity = 0.90
 background-blur = true
 
@@ -12,7 +12,7 @@ window-padding-x = 16
 window-padding-y = 12
 window-padding-balance = true
 
-# SSH terminfo — auto-send terminfo to remote hosts
+# Auto-send terminfo to remote hosts
 shell-integration-features = ssh-env,ssh-terminfo
 
 # Keybindings
