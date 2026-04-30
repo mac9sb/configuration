@@ -2,7 +2,7 @@
   "agent": {
     "sidebar_side": "left",
     "dock": "left",
-    "default_width": 200,
+    "default_width": 280,
     "tool_permissions": {
       "tools": {
         "terminal": {
@@ -11,19 +11,20 @@
       },
     },
     "default_model": {
-      "provider": "openrouter",
-      "model": "openrouter/free",
+      "provider": "google",
+      "model": "gemini-2.5-flash",
       "enable_thinking": true,
     },
   },
   "agent_servers": {
     "pi-acp": {
       "favorite_models": [
+        "anthropic/claude-haiku-4-5-20251001",
         "anthropic/claude-opus-4-7",
         "anthropic/claude-sonnet-4-6",
-        "anthropic/claude-haiku-4-5-20251001",
+        "google-gemini-cli/gemini-2.5-flash",
+        "openai-codex/gpt-5.4",
         "openai-codex/gpt-5.5",
-        "google-gemini-cli/gemini-2.5-pro",
       ],
       "type": "registry",
     },
@@ -32,8 +33,6 @@
     "comment": true,
     "git-firefly": true,
     "kanagawa-themes": true,
-    "lua": true,
-    "pkl": true,
     "ruby": true,
     "swift": true,
     "toml": true,
@@ -42,18 +41,24 @@
   "buffer_font_size": 11,
   "cli_default_open_behavior": "existing_window",
   "diff_view_style": "unified",
+  "git_panel": {
+    "default_width": 280,
+  },
   "languages": {
     "Ruby": {
       "enable_language_server": false,
     },
   },
+  "project_panel": {
+    "default_width": 280,
+  },
   "relative_line_numbers": "enabled",
   "theme": {
-    "dark": "Vitesse Refined Dark",
-    "light": "Vitesse Refined Light Soft",
+    "dark": "Kanagawa Dragon",
+    "light": "Kanagawa Lotus",
     "mode": "system",
   },
-  "ui_font_family": "Liga SFMono Nerd Font",
+  "ui_font_family": "SF Pro Display",
   "ui_font_size": 12,
   "vim": {
     "use_system_clipboard": "never",

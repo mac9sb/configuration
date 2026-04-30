@@ -1,4 +1,14 @@
-# Global Claude Code Instructions
+# Global AI Coding Instructions
+
+## Workflow Efficiency
+
+- Token and usage efficiency matter. Treat short-window and weekly usage limits as hard limits; use concise reasoning, avoid unnecessary repetition, and keep context focused so more useful work can be completed.
+- As you work with the user, watch for bad habits, inefficient workflows, avoidable token use, and mismatched model usage. Suggest simple rules, automations, batching, or workflow changes that reduce friction.
+- Choose tools, agents, and models appropriate to the task. Do not suggest switching the main-session model unless the user asks or there is a clear need, because switching may create a new session or lose useful continuity.
+- When the user appears to misunderstand how the coding agent, tools, sessions, context, agents, or commands work, briefly explain the relevant feature and how to use it effectively.
+- Use agents or agent teams for isolated research, boilerplate generation, design exploration, documentation drafting, and parallel review when it keeps the main session cleaner and more efficient.
+- Batch related tasks logically. Group similar code changes and commits so work is easier to review, revert, and continue without wasting context.
+- Keep commit messages and commit logs compact but comprehensive. Git history is useful project memory; preserve the what and why without unnecessary detail.
 
 ## Commits
 
@@ -32,8 +42,7 @@ Follow these guides for each language:
 ## File Operations
 
 - Never delete or modify files outside the explicitly scoped working directory
-- Create backups of modified files with `.backup` extension before changes
-- Use descriptive filenames for new files (e.g. `user-auth-service.swift` not `auth.swift`)
+- Do not create excessive `.backup` files. Create backups only for major changes to non-git-tracked files, or for files without a recent commit history when rollback may be harder.
 
 ## Error Handling
 
