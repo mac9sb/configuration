@@ -1,8 +1,10 @@
 #!/bin/sh
 set -e
 
-MACOS=false
-[ "$(uname)" = "Darwin" ] && MACOS=true
+if [ "$(uname)" != "Darwin" ]; then
+    printf '%s\n' "This configuration supports only macOS." >&2
+    exit 1
+fi
 
 REPO="$HOME/Developer/configuration"
 
@@ -30,39 +32,37 @@ fi
 # Remove cloned repository
 rm -rf "$REPO"
 
-if [ "$MACOS" = true ]; then
-    # Revert TouchID for sudo
-    sudo rm -f /etc/pam.d/sudo_local
+# Revert TouchID for sudo
+sudo rm -f /etc/pam.d/sudo_local
 
-    # Revert Dock and macOS defaults
-    defaults delete com.apple.dock persistent-apps
-    defaults delete com.apple.dock persistent-others
-    defaults delete com.apple.dock tilesize
-    defaults delete com.apple.dock magnification
-    defaults delete com.apple.dock largesize
-    defaults write com.apple.dock mru-spaces -bool true
-    killall Dock
+# Revert Dock and macOS defaults
+defaults delete com.apple.dock persistent-apps
+defaults delete com.apple.dock persistent-others
+defaults delete com.apple.dock tilesize
+defaults delete com.apple.dock magnification
+defaults delete com.apple.dock largesize
+defaults write com.apple.dock mru-spaces -bool true
+killall Dock
 
-    # Revert Menu Bar clock
-    defaults delete com.apple.menuextra.clock ShowDate 2>/dev/null || true
-    defaults delete com.apple.menuextra.clock ShowDayOfWeek 2>/dev/null || true
+# Revert Menu Bar clock
+defaults delete com.apple.menuextra.clock ShowDate 2>/dev/null || true
+defaults delete com.apple.menuextra.clock ShowDayOfWeek 2>/dev/null || true
 
-    # Revert Menu Bar visible items
-    defaults delete com.apple.controlcenter "NSStatusItem VisibleCC Battery" 2>/dev/null || true
-    defaults delete com.apple.controlcenter "NSStatusItem VisibleCC WiFi" 2>/dev/null || true
-    defaults delete com.apple.controlcenter "NSStatusItem VisibleCC NowPlaying" 2>/dev/null || true
-    defaults delete com.apple.controlcenter "NSStatusItem VisibleCC Clock" 2>/dev/null || true
-    defaults delete com.apple.controlcenter "NSStatusItem VisibleCC BentoBox-0" 2>/dev/null || true
-    defaults delete com.apple.controlcenter "NSStatusItem VisibleCC Spotlight" 2>/dev/null || true
+# Revert Menu Bar visible items
+defaults delete com.apple.controlcenter "NSStatusItem VisibleCC Battery" 2>/dev/null || true
+defaults delete com.apple.controlcenter "NSStatusItem VisibleCC WiFi" 2>/dev/null || true
+defaults delete com.apple.controlcenter "NSStatusItem VisibleCC NowPlaying" 2>/dev/null || true
+defaults delete com.apple.controlcenter "NSStatusItem VisibleCC Clock" 2>/dev/null || true
+defaults delete com.apple.controlcenter "NSStatusItem VisibleCC BentoBox-0" 2>/dev/null || true
+defaults delete com.apple.controlcenter "NSStatusItem VisibleCC Spotlight" 2>/dev/null || true
 
-    killall ControlCenter 2>/dev/null || true
-    killall SystemUIServer 2>/dev/null || true
+killall ControlCenter 2>/dev/null || true
+killall SystemUIServer 2>/dev/null || true
 
-    # Revert window manager and trackpad settings
-    defaults write com.apple.WindowManager GloballyEnabled -bool false
-    defaults write com.apple.WindowManager EnableTiledWindowMargins -bool false
-    defaults write com.apple.AppleMultitouchTrackpad TrackpadThreeFingerDrag -bool false
-    defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadThreeFingerDrag -bool false
-    defaults delete NSGlobalDomain com.apple.springing.enabled 2>/dev/null || true
-    defaults delete NSGlobalDomain com.apple.springing.delay 2>/dev/null || true
-fi
+# Revert window manager and trackpad settings
+defaults write com.apple.WindowManager GloballyEnabled -bool false
+defaults write com.apple.WindowManager EnableTiledWindowMargins -bool false
+defaults write com.apple.AppleMultitouchTrackpad TrackpadThreeFingerDrag -bool false
+defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadThreeFingerDrag -bool false
+defaults delete NSGlobalDomain com.apple.springing.enabled 2>/dev/null || true
+defaults delete NSGlobalDomain com.apple.springing.delay 2>/dev/null || true

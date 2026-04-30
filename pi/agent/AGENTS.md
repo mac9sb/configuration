@@ -41,8 +41,10 @@ Follow these guides unless the repository has stronger local conventions:
 |----------|-------------|
 | Swift | [Swift API Design Guidelines](https://www.swift.org/documentation/api-design-guidelines/) |
 | JavaScript | [Google JavaScript Style Guide](https://google.github.io/styleguide/jsguide.html) |
-| HTML/CSS | [Google HTML/CSS Style Guide](https://google.github.io/styleguide/htmlcssguide.html) |
 | TypeScript | [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html) |
+| Python | [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) |
+| Vue | [Vue 2 Style Guide](https://v2.vuejs.org/v2/style-guide/) |
+| HTML/CSS | [Google HTML/CSS Style Guide](https://google.github.io/styleguide/htmlcssguide.html) |
 
 When no specific guide exists, prioritize:
 
