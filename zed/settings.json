@@ -1,4 +1,22 @@
 {
+  "ssh_connections": [
+    {
+      "host": "dav.internal",
+      "args": [],
+      "projects": [
+        {
+          "paths": [
+            "/appl/museum-in-the-park/./"
+          ]
+        },
+        {
+          "paths": [
+            "/nfs/data/mac/data-migration-py-mitp"
+          ]
+        }
+      ]
+    }
+  ],
   "collaboration_panel": {
     "default_width": 280.0,
   },

@@ -35,8 +35,10 @@ fi
 launchctl bootout "gui/$(id -u)" "$MAINTENANCE_PLIST" 2>/dev/null || true
 rm -f "$MAINTENANCE_PLIST"
 
-# Remove cloned repository
-rm -rf "$REPO"
+# Optionally remove cloned repository
+if [ "${REMOVE_REPO:-0}" = "1" ]; then
+    rm -rf "$REPO"
+fi
 
 # Revert TouchID for sudo
 sudo rm -f /etc/pam.d/sudo_local

@@ -28,6 +28,7 @@ vim.pack.add({
     "https://github.com/folke/lazydev.nvim",
     "https://github.com/folke/flash.nvim",
     "https://github.com/MeanderingProgrammer/render-markdown.nvim",
+    "https://github.com/rebelot/kanagawa.nvim",
 })
 
 -- Options
@@ -90,15 +91,41 @@ vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold", "CursorHo
 })
 
 -- Theme
+local function is_dark_mode()
+    if vim.fn.has("mac") == 1 then
+        local output = vim.fn.system({ "defaults", "read", "-g", "AppleInterfaceStyle" })
+        return vim.v.shell_error == 0 and vim.trim(output) == "Dark"
+    end
+    return vim.o.background == "dark"
+end
+
+local function kanagawa_theme()
+    return is_dark_mode() and "dragon" or "lotus"
+end
+
+local function apply_colorscheme()
+    local theme = kanagawa_theme()
+    local background = theme == "dragon" and "dark" or "light"
+
+    require("kanagawa").setup({
+        theme = theme,
+        background = { dark = "dragon", light = "lotus" },
+        transparent = true,
+    })
+
+    vim.opt.background = background
+    vim.cmd.colorscheme("kanagawa-" .. theme)
+end
+
 local function apply_hl_overrides()
+    local is_dark = vim.o.background == "dark"
+    local blue = is_dark and "#658594" or "#7e9cd8"
+    local fg = is_dark and "#c5c9c5" or "#545464"
+
     vim.api.nvim_set_hl(0, "SignColumn", { bg = "NONE" })
     vim.api.nvim_set_hl(0, "LineNr", { bg = "NONE" })
     vim.api.nvim_set_hl(0, "CursorLineNr", { bg = "NONE" })
-    -- transparent background for all panels, popups and buffers
     vim.api.nvim_set_hl(0, "Normal", { bg = "NONE" })
-    vim.api.nvim_set_hl(0, "NormalFloat", { bg = "NONE" })
-    vim.api.nvim_set_hl(0, "NormalNC", { bg = "NONE" })
-    vim.api.nvim_set_hl(0, "NormalSB", { bg = "NONE" })
     vim.api.nvim_set_hl(0, "NormalFloat", { bg = "NONE" })
     vim.api.nvim_set_hl(0, "NormalNC", { bg = "NONE" })
     vim.api.nvim_set_hl(0, "NormalSB", { bg = "NONE" })
@@ -121,7 +148,15 @@ local function apply_hl_overrides()
     vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { bg = blue, fg = fg })
 end
 
+apply_colorscheme()
 apply_hl_overrides()
+vim.api.nvim_create_autocmd("FocusGained", {
+    group = vim.api.nvim_create_augroup("kanagawa-auto-theme", { clear = true }),
+    callback = function()
+        apply_colorscheme()
+        apply_hl_overrides()
+    end,
+})
 vim.api.nvim_create_autocmd("ColorScheme", { callback = apply_hl_overrides })
 
 -- UI
@@ -359,7 +394,10 @@ vim.api.nvim_create_autocmd("FileType", {
     pattern = "toml",
     group = vim.api.nvim_create_augroup("mise-otter", { clear = true }),
     callback = function()
-        pcall(require("otter").activate)
+        local ok, otter = pcall(require, "otter")
+        if ok then
+            otter.activate()
+        end
     end,
 })
 

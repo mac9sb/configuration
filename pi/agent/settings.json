@@ -9,5 +9,5 @@
   "defaultModel": "gpt-5.4",
   "quietStartup": true,
   "lastChangelogVersion": "0.70.6",
-  "defaultThinkingLevel": "minimal"
+  "defaultThinkingLevel": "medium"
 }

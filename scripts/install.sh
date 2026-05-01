@@ -22,10 +22,18 @@ REPO=${SCRIPT_DIR:h}
 
 # Create a symlink, backing up any existing target first
 make_link() {
-    local src="$1" target="$2"
+    local src="$1" target="$2" backup
+
     [ "$(readlink "$target" 2>/dev/null)" = "$src" ] && return
-    [ -e "$target" ] && mv "$target" "$target.bak"
-    ln -sn "$src" "$target"
+
+    mkdir -p "${target:h}"
+    if [ -e "$target" ] || [ -L "$target" ]; then
+        backup="$target.bak"
+        [ -e "$backup" ] || [ -L "$backup" ] && backup="$target.bak.$(date +%Y%m%d%H%M%S)"
+        mv "$target" "$backup"
+    fi
+
+    ln -sfn "$src" "$target"
 }
 
 install_launch_agent() {

@@ -7,14 +7,42 @@ if [ "$(uname)" != "Darwin" ]; then
 fi
 
 DRY_RUN=0
-if [ "${1:-}" = "--dry-run" ]; then
-    DRY_RUN=1
-fi
+AGGRESSIVE=0
+
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run)
+            DRY_RUN=1
+            ;;
+        --aggressive)
+            AGGRESSIVE=1
+            ;;
+        *)
+            printf '%s\n' "Usage: $0 [--dry-run] [--aggressive]" >&2
+            exit 1
+            ;;
+    esac
+done
 
 run_cmd() {
     printf '\n==> %s\n' "$*"
     if [ "$DRY_RUN" -eq 0 ]; then
         "$@"
+    fi
+}
+
+prune_dir() {
+    local dir="$1" days="$2" label="$3"
+
+    if [ ! -d "$dir" ]; then
+        return
+    fi
+
+    printf '\n==> %s (%s, older than %s days)\n' "$label" "$dir" "$days"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        find "$dir" -mindepth 1 -mtime +"$days" -print 2>/dev/null || true
+    else
+        find "$dir" -mindepth 1 -mtime +"$days" -exec rm -rf -- {} + 2>/dev/null || true
     fi
 }
 
@@ -43,16 +71,22 @@ else
     printf '%s\n' "Starting maintenance..."
 fi
 
-for dir in \
-    "$HOME/.Trash" \
-    "$HOME/.cache" \
-    "$HOME/Library/Caches" \
-    "$HOME/Library/Logs" \
-    "$HOME/Library/Developer/Xcode/DerivedData" \
-    "$HOME/Library/Developer/CoreSimulator/Caches"
-do
-    clear_dir_contents "$dir"
-done
+prune_dir "$HOME/.Trash" 7 "Empty stale Trash items"
+prune_dir "$HOME/.cache" 14 "Prune stale XDG cache files"
+prune_dir "$HOME/Library/Caches" 14 "Prune stale macOS cache files"
+prune_dir "$HOME/Library/Logs" 30 "Prune old log files"
+prune_dir "$HOME/Library/Developer/Xcode/DerivedData" 7 "Prune old Xcode DerivedData"
+prune_dir "$HOME/Library/Developer/CoreSimulator/Caches" 7 "Prune old CoreSimulator caches"
+
+if [ "$AGGRESSIVE" -eq 1 ]; then
+    clear_dir_contents "$HOME/.Trash"
+    clear_dir_contents "$HOME/.cache"
+    clear_dir_contents "$HOME/Library/Caches"
+    clear_dir_contents "$HOME/Library/Developer/Xcode/DerivedData"
+    clear_dir_contents "$HOME/Library/Developer/CoreSimulator/Caches"
+fi
+
+run_cmd rm -f -- "$HOME/.config/zsh/.zcompdump" "$HOME/.config/zsh/.zshrc.zwc"
 
 if [ -x /opt/homebrew/bin/brew ]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"
