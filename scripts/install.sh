@@ -28,6 +28,42 @@ make_link() {
     ln -sn "$src" "$target"
 }
 
+install_launch_agent() {
+    local label="$1" plist_path="$2" script_path="$3" log_dir="$4"
+
+    mkdir -p "${plist_path:h}" "$log_dir"
+    cat >"$plist_path" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${label}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${script_path}</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>16</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>${log_dir}/${label}.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>${log_dir}/${label}.err.log</string>
+</dict>
+</plist>
+EOF
+
+    launchctl bootout "gui/$(id -u)" "$plist_path" 2>/dev/null || true
+    launchctl bootstrap "gui/$(id -u)" "$plist_path"
+}
+
 # Create Symbolic Links to Configuration Files
 mkdir -p "$HOME/.config"
 for dir in ghostty git mise nvim ssh vim zed zsh; do
@@ -63,7 +99,12 @@ brew bundle --file="$REPO/Brewfile"
 # Install project-level tools via mise
 mise trust "$REPO/mise/config.toml" && mise install
 
-
+# Install scheduled maintenance LaunchAgent
+install_launch_agent \
+    "com.mac.configuration.maintenance" \
+    "$HOME/Library/LaunchAgents/com.mac.configuration.maintenance.plist" \
+    "$REPO/scripts/maintenance.sh" \
+    "$HOME/Library/Logs"
 
 # Apply macOS Interface Customisation
 sudo cp /etc/pam.d/sudo_local.template /etc/pam.d/sudo_local

@@ -7,6 +7,8 @@ if [ "$(uname)" != "Darwin" ]; then
 fi
 
 REPO="$HOME/Developer/configuration"
+MAINTENANCE_LABEL="com.mac.configuration.maintenance"
+MAINTENANCE_PLIST="$HOME/Library/LaunchAgents/${MAINTENANCE_LABEL}.plist"
 
 # Remove symlinks and restore backups
 for dir in ghostty git mise nvim ssh vim zed zsh; do
@@ -28,6 +30,10 @@ rm -f "$HOME/.ssh/config"
 if [ "${UNINSTALL_BREW:-0}" = "1" ] && command -v brew >/dev/null 2>&1; then
     brew bundle cleanup --file="$REPO/Brewfile" --force
 fi
+
+# Remove scheduled maintenance LaunchAgent
+launchctl bootout "gui/$(id -u)" "$MAINTENANCE_PLIST" 2>/dev/null || true
+rm -f "$MAINTENANCE_PLIST"
 
 # Remove cloned repository
 rm -rf "$REPO"
